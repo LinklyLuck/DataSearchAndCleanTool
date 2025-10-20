@@ -1,0 +1,9 @@
+httpx
+polars
+tqdm
+pyyaml
+httpx>=0.24
+polars>=0.20
+tqdm
+kaggle>=1.6
+

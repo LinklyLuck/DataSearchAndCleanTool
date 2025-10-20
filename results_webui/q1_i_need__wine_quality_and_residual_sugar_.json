@@ -1,0 +1,17 @@
+{
+  "question": "I need  wine quality and residual sugar Dataset",
+  "datasets": [
+    "datas/**/*.{csv,json,ndjson,jsonl,xlsx,xls}",
+    "datalake/**/*.{csv,json,ndjson,jsonl,xlsx,xls}"
+  ],
+  "out": "E:\\DataSearchTool-main\\results_webui\\q1_i_need__wine_quality_and_residual_sugar__merged.csv",
+  "graph_out": "E:\\DataSearchTool-main\\results_webui\\q1_i_need__wine_quality_and_residual_sugar__graph.dot",
+  "left_model": "gpt-4o-mini",
+  "map_model": "gpt-4o-mini",
+  "join_model": "gpt-4o-mini",
+  "max_concurrency": 4,
+  "api_base": "https://goapi.gptnb.ai/v1/chat/completions",
+  "api_key": "sk-E8mcuW0jQmmvrk9J531f719f375b4f639f69Bb1c2921B87c",
+  "er_mvi_sample_rows": 200,
+  "enable_er_mvi": true
+}

@@ -1,0 +1,682 @@
+{
+  "query": "I need  wine quality and residual sugar Dataset",
+  "domain": "fallback",
+  "rows": 1599,
+  "columns": [
+    "target_quality",
+    "alcohol_content",
+    "pH",
+    "chlorides",
+    "sulphates",
+    "density",
+    "free sulfur dioxide",
+    "total sulfur dioxide",
+    "wine_id"
+  ],
+  "matched_files": [
+    "E:\\DataSearchTool-main\\datalake\\all_seasons.xlsx",
+    "E:\\DataSearchTool-main\\datalake\\tmdb_5000_credits.csv",
+    "E:\\DataSearchTool-main\\datalake\\tmdb_5000_movies.csv",
+    "E:\\DataSearchTool-main\\datalake\\wine_acid_sugar.csv",
+    "E:\\DataSearchTool-main\\datalake\\wine_components.csv",
+    "E:\\DataSearchTool-main\\datalake\\wine_quality_red_327.csv",
+    "E:\\DataSearchTool-main\\datalake\\winequality_red_xxx.csv",
+    "E:\\DataSearchTool-main\\datas\\boston.csv",
+    "E:\\DataSearchTool-main\\datas\\boston_home_243.csv",
+    "E:\\DataSearchTool-main\\datas\\boston_residence_135.csv",
+    "E:\\DataSearchTool-main\\datas\\boston_residence_247.csv",
+    "E:\\DataSearchTool-main\\datas\\boston_residence_421.csv",
+    "E:\\DataSearchTool-main\\datas\\boston_residence_472.csv",
+    "E:\\DataSearchTool-main\\datas\\business_administration_237.csv",
+    "E:\\DataSearchTool-main\\datas\\business_administration_345.csv",
+    "E:\\DataSearchTool-main\\datas\\business_administration_532.csv",
+    "E:\\DataSearchTool-main\\datas\\business_administration_876.csv",
+    "E:\\DataSearchTool-main\\datas\\cab_fare_cost_547.csv",
+    "E:\\DataSearchTool-main\\datas\\cab_fare_details_854.csv",
+    "E:\\DataSearchTool-main\\datas\\cab_fare_rates_387.csv",
+    "E:\\DataSearchTool-main\\datas\\cab_ride_cost_879.csv",
+    "E:\\DataSearchTool-main\\datas\\cab_ride_fare_348.csv",
+    "E:\\DataSearchTool-main\\datas\\cancer_medical.csv",
+    "E:\\DataSearchTool-main\\datas\\cat_breed.csv",
+    "E:\\DataSearchTool-main\\datas\\cat_breed_details_245.csv",
+    "E:\\DataSearchTool-main\\datas\\census_cancer_individuals.csv",
+    "E:\\DataSearchTool-main\\datas\\coverage_data_237.csv",
+    "E:\\DataSearchTool-main\\datas\\coverage_data_348.csv",
+    "E:\\DataSearchTool-main\\datas\\coverage_data_384.csv",
+    "E:\\DataSearchTool-main\\datas\\coverage_data_738.csv",
+    "E:\\DataSearchTool-main\\datas\\coverage_details_945.csv",
+    "E:\\DataSearchTool-main\\datas\\customer_information_417.csv",
+    "E:\\DataSearchTool-main\\datas\\customer_information_457.csv",
+    "E:\\DataSearchTool-main\\datas\\customer_information_837.csv",
+    "E:\\DataSearchTool-main\\datas\\customer_information_874.csv",
+    "E:\\DataSearchTool-main\\datas\\factory_sensor_emulator_2563.csv",
+    "E:\\DataSearchTool-main\\datas\\feline_variety_123.csv",
+    "E:\\DataSearchTool-main\\datas\\industrial_detector_replica_3872.csv",
+    "E:\\DataSearchTool-main\\datas\\industrial_sensor_simulation_5867.csv",
+    "E:\\DataSearchTool-main\\datas\\insurance.csv",
+    "E:\\DataSearchTool-main\\datas\\IoT_factory.csv",
+    "E:\\DataSearchTool-main\\datas\\IoT_stors_indexes.csv",
+    "E:\\DataSearchTool-main\\datas\\manufacturing_detector_emulator_1234.csv",
+    "E:\\DataSearchTool-main\\datas\\manufacturing_detector_emulator_1789.csv",
+    "E:\\DataSearchTool-main\\datas\\manufacturing_detector_emulator_2040_xxx.csv",
+    "E:\\DataSearchTool-main\\datas\\manufacturing_detector_simulation_5678.csv",
+    "E:\\DataSearchTool-main\\datas\\manufacturing_monitor_emulator_2040_xyz.csv",
+    "E:\\DataSearchTool-main\\datas\\manufacturing_monitor_simulation_2040_xxx.csv",
+    "E:\\DataSearchTool-main\\datas\\MBA_admission.csv",
+    "E:\\DataSearchTool-main\\datas\\MBA_students_profile.csv",
+    "E:\\DataSearchTool-main\\datas\\olist_customers_dataset.csv",
+    "E:\\DataSearchTool-main\\datas\\olist_order_items_dataset.csv",
+    "E:\\DataSearchTool-main\\datas\\olist_order_payments_dataset.csv",
+    "E:\\DataSearchTool-main\\datas\\olist_order_reviews_dataset.csv",
+    "E:\\DataSearchTool-main\\datas\\olist_orders_dataset.csv",
+    "E:\\DataSearchTool-main\\datas\\olist_products_dataset.csv",
+    "E:\\DataSearchTool-main\\datas\\olist_sellers_dataset.csv",
+    "E:\\DataSearchTool-main\\datas\\product_category_name_translation.csv",
+    "E:\\DataSearchTool-main\\datas\\production_detector_emulator_2040_537.csv",
+    "E:\\DataSearchTool-main\\datas\\taxi_trip_pricing.csv",
+    "E:\\DataSearchTool-main\\datas\\train_energy_data.csv",
+    "E:\\DataSearchTool-main\\datas\\train_power_data_837.csv",
+    "E:\\DataSearchTool-main\\datas\\training_energy_dataset_673.csv",
+    "E:\\DataSearchTool-main\\datas\\training_power_data_462.csv",
+    "E:\\DataSearchTool-main\\datas\\training_power_data_725.csv",
+    "E:\\DataSearchTool-main\\datas\\training_power_dataset_374.csv",
+    "E:\\DataSearchTool-main\\datas\\worldwide_cancer_cases_2015_2024_427.csv",
+    "E:\\DataSearchTool-main\\datas\\worldwide_cancer_cases_2015_2024_437.csv",
+    "E:\\DataSearchTool-main\\datas\\worldwide_cancer_cases_2015_2024_678.csv",
+    "E:\\DataSearchTool-main\\datas\\worldwide_cancer_cases_2015_2024_789.csv"
+  ],
+  "diagnostics": [
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\all_seasons.xlsx",
+      "rows_raw": 99,
+      "rows_mapped": 99,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\tmdb_5000_credits.csv",
+      "rows_raw": 4803,
+      "rows_mapped": 4803,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\tmdb_5000_movies.csv",
+      "rows_raw": 4803,
+      "rows_mapped": 4803,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\wine_acid_sugar.csv",
+      "rows_raw": 1599,
+      "rows_mapped": 1599,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\wine_components.csv",
+      "rows_raw": 1599,
+      "rows_mapped": 1599,
+      "join_keys_used": [
+        "wine_id"
+      ],
+      "rows_unique_on_keys": 1597
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\wine_quality_red_327.csv",
+      "rows_raw": 1437,
+      "rows_mapped": 1437,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\winequality_red_xxx.csv",
+      "rows_raw": 1461,
+      "rows_mapped": 1461,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\boston.csv",
+      "rows_raw": 506,
+      "rows_mapped": 506,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\boston_home_243.csv",
+      "rows_raw": 380,
+      "rows_mapped": 380,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\boston_residence_135.csv",
+      "rows_raw": 415,
+      "rows_mapped": 415,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\boston_residence_247.csv",
+      "rows_raw": 428,
+      "rows_mapped": 428,
+      "join_keys_used": [
+        "RM",
+        "ZN",
+        "NOX",
+        "CRIM",
+        "LSTAT",
+        "RAD",
+        "DIS",
+        "B",
+        "TAX",
+        "AGE"
+      ],
+      "rows_unique_on_keys": 428
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\boston_residence_421.csv",
+      "rows_raw": 425,
+      "rows_mapped": 425,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\boston_residence_472.csv",
+      "rows_raw": 404,
+      "rows_mapped": 404,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\business_administration_237.csv",
+      "rows_raw": 5740,
+      "rows_mapped": 5740,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\business_administration_345.csv",
+      "rows_raw": 5286,
+      "rows_mapped": 5286,
+      "join_keys_used": [
+        "application_id"
+      ],
+      "rows_unique_on_keys": 5286
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\business_administration_532.csv",
+      "rows_raw": 5639,
+      "rows_mapped": 5639,
+      "join_keys_used": [
+        "application_id"
+      ],
+      "rows_unique_on_keys": 5639
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\business_administration_876.csv",
+      "rows_raw": 5771,
+      "rows_mapped": 5771,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\cab_fare_cost_547.csv",
+      "rows_raw": 754,
+      "rows_mapped": 754,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\cab_fare_details_854.csv",
+      "rows_raw": 734,
+      "rows_mapped": 734,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\cab_fare_rates_387.csv",
+      "rows_raw": 855,
+      "rows_mapped": 855,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\cab_ride_cost_879.csv",
+      "rows_raw": 777,
+      "rows_mapped": 777,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\cab_ride_fare_348.csv",
+      "rows_raw": 832,
+      "rows_mapped": 832,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\cancer_medical.csv",
+      "rows_raw": 50000,
+      "rows_mapped": 50000,
+      "join_keys_used": [
+        "Patient_ID"
+      ],
+      "rows_unique_on_keys": 50000
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\cat_breed.csv",
+      "rows_raw": 1071,
+      "rows_mapped": 1071,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\cat_breed_details_245.csv",
+      "rows_raw": 845,
+      "rows_mapped": 845,
+      "join_keys_used": [
+        "Breed"
+      ],
+      "rows_unique_on_keys": 3
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\census_cancer_individuals.csv",
+      "rows_raw": 50000,
+      "rows_mapped": 50000,
+      "join_keys_used": [
+        "Patient_ID"
+      ],
+      "rows_unique_on_keys": 50000
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\coverage_data_237.csv",
+      "rows_raw": 1202,
+      "rows_mapped": 1202,
+      "join_keys_used": [
+        "region"
+      ],
+      "rows_unique_on_keys": 4
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\coverage_data_348.csv",
+      "rows_raw": 1075,
+      "rows_mapped": 1075,
+      "join_keys_used": [
+        "region"
+      ],
+      "rows_unique_on_keys": 4
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\coverage_data_384.csv",
+      "rows_raw": 1125,
+      "rows_mapped": 1125,
+      "join_keys_used": [
+        "region"
+      ],
+      "rows_unique_on_keys": 4
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\coverage_data_738.csv",
+      "rows_raw": 1104,
+      "rows_mapped": 1104,
+      "join_keys_used": [
+        "region",
+        "sex",
+        "age",
+        "smoker"
+      ],
+      "rows_unique_on_keys": 528
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\coverage_details_945.csv",
+      "rows_raw": 1101,
+      "rows_mapped": 1101,
+      "join_keys_used": [
+        "region"
+      ],
+      "rows_unique_on_keys": 4
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\customer_information_417.csv",
+      "rows_raw": 5831,
+      "rows_mapped": 5831,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\customer_information_457.csv",
+      "rows_raw": 808,
+      "rows_mapped": 808,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\customer_information_837.csv",
+      "rows_raw": 779,
+      "rows_mapped": 779,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\customer_information_874.csv",
+      "rows_raw": 937,
+      "rows_mapped": 937,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\factory_sensor_emulator_2563.csv",
+      "rows_raw": 460979,
+      "rows_mapped": 460979,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\feline_variety_123.csv",
+      "rows_raw": 759,
+      "rows_mapped": 759,
+      "join_keys_used": [
+        "Gender",
+        "Breed",
+        "Longitude",
+        "Neutered_or_spayed",
+        "Age_in_years",
+        "Fur_colour_dominant",
+        "Country",
+        "Body_length",
+        "Eye_colour",
+        "Fur_pattern",
+        "Weight",
+        "Age_in_months"
+      ],
+      "rows_unique_on_keys": 759
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\industrial_detector_replica_3872.csv",
+      "rows_raw": 453133,
+      "rows_mapped": 453133,
+      "join_keys_used": [
+        "Machine_ID"
+      ],
+      "rows_unique_on_keys": 453133
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\industrial_sensor_simulation_5867.csv",
+      "rows_raw": 448683,
+      "rows_mapped": 448683,
+      "join_keys_used": [
+        "Machine_Type",
+        "Installation_Year"
+      ],
+      "rows_unique_on_keys": 1353
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\insurance.csv",
+      "rows_raw": 1338,
+      "rows_mapped": 1338,
+      "join_keys_used": [
+        "region"
+      ],
+      "rows_unique_on_keys": 4
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\IoT_factory.csv",
+      "rows_raw": 500000,
+      "rows_mapped": 500000,
+      "join_keys_used": [
+        "Machine_ID"
+      ],
+      "rows_unique_on_keys": 500000
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\IoT_stors_indexes.csv",
+      "rows_raw": 500000,
+      "rows_mapped": 500000,
+      "join_keys_used": [
+        "Machine_ID"
+      ],
+      "rows_unique_on_keys": 500000
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\manufacturing_detector_emulator_1234.csv",
+      "rows_raw": 451423,
+      "rows_mapped": 451423,
+      "join_keys_used": [
+        "Machine_ID"
+      ],
+      "rows_unique_on_keys": 451423
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\manufacturing_detector_emulator_1789.csv",
+      "rows_raw": 461455,
+      "rows_mapped": 461455,
+      "join_keys_used": [
+        "Machine_ID"
+      ],
+      "rows_unique_on_keys": 461455
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\manufacturing_detector_emulator_2040_xxx.csv",
+      "rows_raw": 451443,
+      "rows_mapped": 451443,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\manufacturing_detector_simulation_5678.csv",
+      "rows_raw": 441772,
+      "rows_mapped": 441772,
+      "join_keys_used": [
+        "Machine_ID"
+      ],
+      "rows_unique_on_keys": 441772
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\manufacturing_monitor_emulator_2040_xyz.csv",
+      "rows_raw": 451580,
+      "rows_mapped": 451580,
+      "join_keys_used": [
+        "Machine_ID"
+      ],
+      "rows_unique_on_keys": 451580
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\manufacturing_monitor_simulation_2040_xxx.csv",
+      "rows_raw": 433104,
+      "rows_mapped": 433104,
+      "join_keys_used": [
+        "Machine_ID",
+        "Installation_Year",
+        "Failure_History_Count"
+      ],
+      "rows_unique_on_keys": 433104
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\MBA_admission.csv",
+      "rows_raw": 6194,
+      "rows_mapped": 6194,
+      "join_keys_used": [
+        "application_id"
+      ],
+      "rows_unique_on_keys": 6194
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\MBA_students_profile.csv",
+      "rows_raw": 6194,
+      "rows_mapped": 6194,
+      "join_keys_used": [
+        "application_id"
+      ],
+      "rows_unique_on_keys": 6194
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\olist_customers_dataset.csv",
+      "rows_raw": 99441,
+      "rows_mapped": 99441,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\olist_order_items_dataset.csv",
+      "rows_raw": 112650,
+      "rows_mapped": 112650,
+      "join_keys_used": [
+        "order_id",
+        "product_id",
+        "seller_id"
+      ],
+      "rows_unique_on_keys": 102425
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\olist_order_payments_dataset.csv",
+      "rows_raw": 103886,
+      "rows_mapped": 103886,
+      "join_keys_used": [
+        "order_id"
+      ],
+      "rows_unique_on_keys": 99440
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\olist_order_reviews_dataset.csv",
+      "rows_raw": 99224,
+      "rows_mapped": 99224,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\olist_orders_dataset.csv",
+      "rows_raw": 99441,
+      "rows_mapped": 99441,
+      "join_keys_used": [
+        "order_id",
+        "customer_id"
+      ],
+      "rows_unique_on_keys": 99441
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\olist_products_dataset.csv",
+      "rows_raw": 32951,
+      "rows_mapped": 32951,
+      "join_keys_used": [
+        "product_id"
+      ],
+      "rows_unique_on_keys": 32951
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\olist_sellers_dataset.csv",
+      "rows_raw": 3095,
+      "rows_mapped": 3095,
+      "join_keys_used": [
+        "seller_id"
+      ],
+      "rows_unique_on_keys": 3095
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\product_category_name_translation.csv",
+      "rows_raw": 71,
+      "rows_mapped": 71,
+      "join_keys_used": [
+        "product_category_name",
+        "product_category_name_english"
+      ],
+      "rows_unique_on_keys": 71
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\production_detector_emulator_2040_537.csv",
+      "rows_raw": 430831,
+      "rows_mapped": 430831,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\taxi_trip_pricing.csv",
+      "rows_raw": 1000,
+      "rows_mapped": 1000,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\train_energy_data.csv",
+      "rows_raw": 1000,
+      "rows_mapped": 1000,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\train_power_data_837.csv",
+      "rows_raw": 798,
+      "rows_mapped": 798,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\training_energy_dataset_673.csv",
+      "rows_raw": 752,
+      "rows_mapped": 752,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\training_power_data_462.csv",
+      "rows_raw": 786,
+      "rows_mapped": 786,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\training_power_data_725.csv",
+      "rows_raw": 707,
+      "rows_mapped": 707,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\training_power_dataset_374.csv",
+      "rows_raw": 885,
+      "rows_mapped": 885,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\worldwide_cancer_cases_2015_2024_427.csv",
+      "rows_raw": 45548,
+      "rows_mapped": 45548,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\worldwide_cancer_cases_2015_2024_437.csv",
+      "rows_raw": 44239,
+      "rows_mapped": 44239,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\worldwide_cancer_cases_2015_2024_678.csv",
+      "rows_raw": 45737,
+      "rows_mapped": 45737,
+      "join_keys_used": [
+        "Country_Region",
+        "Year",
+        "Gender"
+      ],
+      "rows_unique_on_keys": 300
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datas\\worldwide_cancer_cases_2015_2024_789.csv",
+      "rows_raw": 45915,
+      "rows_mapped": 45915,
+      "join_keys_used": [
+        "Patient_ID"
+      ],
+      "rows_unique_on_keys": 45915
+    }
+  ],
+  "join_keys": [
+    "wine_id",
+    "region"
+  ]
+}
