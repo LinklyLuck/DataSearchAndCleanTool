@@ -181,6 +181,13 @@ class Config:
     cache_path: Path = Path(".llm_cache.sqlite")
     api_base: str = "https://goapi.gptnb.ai/v1/chat/completions"
     api_key: str = ""
+    # 新增：通用合并（保留所有列/行）开关，默认启用，不改变原安全内连接的输出（写入 meta 供审计）
+    universal_merge: bool = True
+
+    # —— 安全模式（可选，不改原逻辑；只是限流避免内存爆）——
+    max_files: int = 20                 # 一次最多合并多少个文件（默认20）
+    max_rows_per_file: int = 200_000    # 每个文件最多读取多少行（超出截断）
+    filter_by_query_keywords: bool = True  # 根据 query 关键词粗过滤文件名
 
 
 # 👉 默认扫描"用户上传 datas/ + 本地 datalake/"
@@ -461,6 +468,13 @@ def _expand_globs(patterns: List[str]) -> List[Path]:
     uniq = sorted({f.resolve() for f in files})
     return uniq
 
+def _keywords_from_query(q: str) -> list[str]:
+    # 提取长度>=3的英文、数字片段做关键词
+    toks = re.findall(r"[A-Za-z0-9_]+", q or "")
+    toks = [t.lower() for t in toks if len(t) >= 3]
+    # 常见停用词过滤（可再扩充）
+    stop = {"dataset", "data", "file", "table", "model", "train", "test", "csv", "json"}
+    return [t for t in toks if t not in stop]
 
 # ======================== 策略（模板域可扩展）===========================
 class DomainPolicy:
@@ -707,6 +721,166 @@ def find_join_cols(cols_a, cols_b, join_keys, canon):
     return common
 
 
+
+# ============== Universal Merge（保留所有列与行） ==============
+def _align_columns(df: pl.DataFrame, all_cols: list[str]) -> pl.DataFrame:
+    add_expr = []
+    for c in all_cols:
+        if c not in df.columns:
+            add_expr.append(pl.lit(None).alias(c))
+    if add_expr:
+        df = df.with_columns(add_expr)
+    return df.select(all_cols)
+
+def _choose_target_dtype(dtypes: list[pl.datatypes.DataType]) -> pl.datatypes.DataType:
+    """Choose a safe common dtype for a column across frames."""
+    # 过滤 Null
+    nz = [dt for dt in dtypes if dt != pl.Null]
+    if not nz:
+        return pl.Utf8
+    # 若任意为字符串/类别，统一为 Utf8
+    if any(dt in (pl.Utf8, pl.Categorical, pl.Binary) for dt in nz):
+        return pl.Utf8
+    # 只要出现过数值，统一为 Float64（可容纳 Int/Float）
+    if any(dt.is_numeric() for dt in nz):
+        return pl.Float64
+    # 只有布尔
+    if all(dt == pl.Boolean for dt in nz):
+        return pl.Boolean
+    # 只有同一种时间类型
+    if len(set(nz)) == 1 and list(set(nz))[0] in (pl.Date, pl.Datetime, pl.Time, pl.Duration):
+        return list(set(nz))[0]
+    # 其它混合，退回 Utf8
+    return pl.Utf8
+
+def _unify_dtypes(frames: list[pl.DataFrame]) -> tuple[list[str], dict[str, pl.datatypes.DataType]]:
+    """Compute union of columns and a target dtype per column."""
+    all_cols: list[str] = []
+    for f in frames:
+        for c in f.columns:
+            if c not in all_cols:
+                all_cols.append(c)
+    # 汇总每列的 dtype
+    dtypes_map: dict[str, list[pl.datatypes.DataType]] = {c: [] for c in all_cols}
+    for f in frames:
+        for c in all_cols:
+            dtypes_map[c].append(f.schema.get(c, pl.Null))
+    target = {c: _choose_target_dtype(dts) for c, dts in dtypes_map.items()}
+    return all_cols, target
+
+def _cast_to_targets(df: pl.DataFrame, target_dtypes: dict[str, pl.datatypes.DataType]) -> pl.DataFrame:
+    exprs = []
+    for c, dt in target_dtypes.items():
+        if c not in df.columns:
+            exprs.append(pl.lit(None).cast(dt).alias(c))
+        else:
+            cur = df.schema[c]
+            if cur != dt:
+                exprs.append(pl.col(c).cast(dt, strict=False).alias(c))
+            else:
+                exprs.append(pl.col(c))
+    return df.select([exprs[i] for i in range(len(exprs))])
+
+def _outer_join_many(frames: list[pl.DataFrame], join_cols: list[str], policy: DomainPolicy):
+    if not frames:
+        return pl.DataFrame(), []
+    merged = frames[0]
+    for df in frames[1:]:
+        jc = [c for c in join_cols if c in merged.columns and c in df.columns]
+        if not jc:
+            # 无公共键，无法外连接，交给 vstack 处理（返回剩余帧）
+            idx = next((i for i, f in enumerate(frames) if f is df), len(frames) - 1)
+            return merged, frames[idx+1:]
+        # 去重并外连接
+        merged = merged.unique(subset=jc, keep="first")
+        df = df.unique(subset=jc, keep="first")
+        if not policy.blowup_guard(merged, df, jc):
+            # 避免爆炸；提前返回，剩余交给 vstack
+            idx = next((i for i, f in enumerate(frames) if f is df), len(frames) - 1)
+            return merged, frames[idx+1:]
+        merged = merged.join(df, on=jc, how="full", suffix="_r")
+        # 去掉 _r 重复列
+        dup = [c for c in merged.columns if c.endswith("_r") and c[:-2] in merged.columns]
+        if dup:
+            merged = merged.drop(dup)
+    return merged, []
+
+def universal_merge(renamed: list[Tuple[Path, pl.DataFrame]],
+                    join_keys: list[str],
+                    policy: DomainPolicy) -> Tuple[pl.DataFrame, dict]:
+    """
+    目标：
+      1) 能 join 的尽量用外连接横向合并（保留列）
+      2) 不能 join 的，纵向 vstack（保留行）
+      3) 最终保留全体列与行；缺失以 None 体现
+    返回：
+      merged_all, stats
+    """
+    if not renamed:
+        return pl.DataFrame(), {}
+
+    # 分组
+    with_keys, without_keys = [], []
+    for p, df in renamed:
+        if any(k in df.columns for k in join_keys):
+            with_keys.append((p, df))
+        else:
+            without_keys.append((p, df))
+
+    stats = {
+        "with_keys": [str(p) for p, _ in with_keys],
+        "without_keys": [str(p) for p, _ in without_keys],
+        "outer_join_chain": [],
+        "vstack_files": []
+    }
+
+    # 外连接链
+    merged_outer = None
+    remaining = []
+    if with_keys:
+        base_p, base_df = choose_base_dataset(with_keys, join_keys)
+        stats["outer_join_chain"].append(str(base_p))
+        pool = [df for p, df in with_keys if p != base_p]
+        merged_outer, leftover = _outer_join_many([base_df] + pool, join_keys, policy)
+        for p, df in with_keys:
+            if p != base_p:
+                stats["outer_join_chain"].append(str(p))
+        remaining = leftover
+    else:
+        merged_outer = pl.DataFrame()
+
+    # 需要纵向追加的帧
+    vstack_list: list[pl.DataFrame] = []
+    if merged_outer is not None and merged_outer.width > 0:
+        vstack_list.append(merged_outer)
+    vstack_list.extend([df for df in remaining])
+    vstack_list.extend([df for _, df in without_keys])
+
+    if not vstack_list:
+        return pl.DataFrame(), stats
+
+    # 统一列集合 + 目标 dtype
+    all_cols, target_dtypes = _unify_dtypes(vstack_list)
+
+    # 对齐并统一 dtype
+    aligned_casted = []
+    for f in vstack_list:
+        f2 = _align_columns(f, all_cols)
+        f2 = _cast_to_targets(f2, target_dtypes)
+        aligned_casted.append(f2)
+
+    # 纵向合并
+    merged_all = aligned_casted[0]
+    for f in aligned_casted[1:]:
+        merged_all = merged_all.vstack(f, in_place=False)
+
+    # 填 None
+    #merged_all = merged_all.fill_null(None)
+    stats["vstack_files"] = [*(stats["without_keys"]), *[str(x) for x in stats["outer_join_chain"][1:]]]
+    return merged_all, stats
+
+
+
 # ================================ 主流程 ================================
 async def process(cfg: Config):
     print(f"[Q] {cfg.question}")
@@ -719,6 +893,24 @@ async def process(cfg: Config):
         print("[ERR] No datasets found under patterns:", cfg.datasets)
         await client.aclose();
         return
+
+    # —— 安全过滤：根据 query 关键词先过滤文件名，防止把不相关大表都并进来 —— #
+    if cfg.filter_by_query_keywords:
+        kws = _keywords_from_query(cfg.question)
+        if kws:
+            def _hit(p: Path) -> bool:
+                name = p.name.lower()
+                return any(k in name for k in kws)
+            filtered = [p for p in paths if _hit(p)]
+            # 如果全被过滤掉，退回原集合，避免误杀
+            if filtered:
+                print(f"[SAFE] filter_by_query_keywords: {len(paths)} -> {len(filtered)} by {kws}")
+                paths = filtered
+
+    # —— 文件上限：防止一次拉太多 —— #
+    if cfg.max_files and len(paths) > cfg.max_files:
+        print(f"[SAFE] max_files: {len(paths)} -> {cfg.max_files}")
+        paths = paths[:cfg.max_files]
 
     # 1.1 采样 headers_union（用于 LLM 细化 join 键）
     headers_union = []
@@ -764,6 +956,9 @@ async def process(cfg: Config):
     for path, (mapping, keys) in zip(paths, results):
         try:
             df_raw = read_any_df(path)
+            # —— 单表行数上限，避免超大表引起 vstack OOM —— #
+            if cfg.max_rows_per_file and df_raw.height > cfg.max_rows_per_file:
+                df_raw = df_raw.head(cfg.max_rows_per_file)
             raw_rows = df_raw.height
         except Exception as e:
             print(f"[WARN] read fail {path.name}: {e}")
@@ -794,6 +989,7 @@ async def process(cfg: Config):
             "rows_mapped": df2.height,
             "join_keys_used": jks,
             "rows_unique_on_keys": uniq_keys,
+            "columns_after_map": df2.columns
         })
         renamed.append((path, df2))
 
@@ -802,37 +998,48 @@ async def process(cfg: Config):
         await client.aclose();
         return
 
-    # 4) 选择 base & join（强键校验 + 放大量守门）
-    base_path, merged = choose_base_dataset(renamed, JOIN_KEYS)
-    print(f"[BASE] {base_path.name}")
+    # 4A) —— 原“保守内连接”路径（不改变原有功能），用于审计对比 —— #
+    base_path, merged_inner = choose_base_dataset(renamed, JOIN_KEYS)
+    merged_safe = merged_inner
+    print(f"[BASE/SAFE] {base_path.name}")
 
     for p, df in renamed:
         if p == base_path:
             continue
-        join_cols = find_join_cols(merged.columns, df.columns, JOIN_KEYS, CANON_FEATURES_ORDER)
+        join_cols = find_join_cols(merged_safe.columns, df.columns, JOIN_KEYS, CANON_FEATURES_ORDER)
         if not join_cols:
-            print(f"[JOIN] {p.name}: no common join keys — skip")
+            print(f"[SAFE-JOIN] {p.name}: no common join keys — skip")
             continue
 
         if not policy.require_strong_keys(join_cols):
             print(
-                f"[JOIN-SKIP] {p.name}: weak join keys {join_cols} (need ≥{policy.join_min_keys}, strong={policy.strong_keys})")
+                f"[SAFE-JOIN-SKIP] {p.name}: weak join keys {join_cols} (need ≥{policy.join_min_keys}, strong={policy.strong_keys})")
             continue
 
-        merged = merged.with_columns([pl.col(k).cast(pl.Utf8) for k in join_cols if k in merged.columns]) \
+        merged_safe = merged_safe.with_columns([pl.col(k).cast(pl.Utf8) for k in join_cols if k in merged_safe.columns]) \
             .unique(subset=join_cols, keep="first")
         df = df.with_columns([pl.col(k).cast(pl.Utf8) for k in join_cols if k in df.columns]) \
             .unique(subset=join_cols, keep="first")
 
-        if not policy.blowup_guard(merged, df, join_cols):
-            print(f"[JOIN-SKIP] {p.name}: potential blow-up on {join_cols} (>{policy.max_blowup_ratio}x)")
+        if not policy.blowup_guard(merged_safe, df, join_cols):
+            print(f"[SAFE-JOIN-SKIP] {p.name}: potential blow-up on {join_cols} (>{policy.max_blowup_ratio}x)")
             continue
 
-        print(f"[JOIN] {p.name} ON {join_cols}")
-        merged = merged.join(df, on=join_cols, how="inner", suffix="_r")
-        dup = [c for c in merged.columns if c.endswith("_r") and c[:-2] in merged.columns]
+        print(f"[SAFE-JOIN] {p.name} ON {join_cols}")
+        merged_safe = merged_safe.join(df, on=join_cols, how="inner", suffix="_r")
+        dup = [c for c in merged_safe.columns if c.endswith("_r") and c[:-2] in merged_safe.columns]
         if dup:
-            merged = merged.drop(dup)
+            merged_safe = merged_safe.drop(dup)
+
+    # 4B) —— 新增“通用合并”路径：外连接 + 对齐列纵向合并（保留所有行与列）—— #
+    try:
+        merged_universal, u_stats = universal_merge(renamed, JOIN_KEYS, policy)
+        print(f"[UNIVERSAL] rows={merged_universal.height}, cols={merged_universal.width}")
+        merged = merged_universal if cfg.universal_merge else merged_safe
+    except Exception as e:
+        print(f"[UNIVERSAL-FAIL] fallback to SAFE INNER JOIN: {e}")
+        u_stats = {"error": str(e)}
+        merged = merged_safe
 
     # 4.5) —— 仅对"现有行、现有列"执行 ER/MVI（Wikipedia + Kaggle），不新增行/列 —— #
     entity_report_path = None
@@ -956,7 +1163,14 @@ async def process(cfg: Config):
     # 5) 导出
     out = Path(cfg.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    merged.write_csv(out)
+    merged.write_csv(out, null_value="None")
+
+    # 附带保守内连接的维度（不改变原行为，只作为对比记录）
+    safe_info = {
+        "rows": merged_safe.height,
+        "cols": merged_safe.width,
+        "columns": merged_safe.columns
+    }
 
     meta = {
         "query": cfg.question,
@@ -966,6 +1180,9 @@ async def process(cfg: Config):
         "matched_files": [str(p) for p, _ in renamed],
         "diagnostics": diagnostics,
         "join_keys": JOIN_KEYS,
+        "merge_mode": "universal" if cfg.universal_merge else "safe_inner",
+        "safe_inner_snapshot": safe_info,
+        "universal_stats": u_stats
     }
     if entity_report_path:
         meta["entity_report"] = entity_report_path
