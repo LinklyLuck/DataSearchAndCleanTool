@@ -1,208 +1,414 @@
-# entity_tools.py
-from __future__ import annotations
-import re, asyncio
-from typing import List, Dict, Any, Optional, Tuple
+# llm_entity_resolver.py
+
+from typing import List, Dict, Any, Tuple
 import polars as pl
+import asyncio
+import json
 from difflib import SequenceMatcher
-from enrichment_providers import MovieEnricher
 
-# --------- 实体归一化工具 ----------
 
-def _norm_title(s: Optional[str]) -> str:
-    if not s: return ""
-    s = s.lower().strip()
-    s = re.sub(r"\s+", " ", s)
-    s = re.sub(r"[^\w\s]", "", s)  # 去标点
-    return s
-
-def _norm_name(s: Optional[str]) -> str:
-    if not s: return ""
-    s = s.lower().strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-def make_canonical_key(title: Optional[str], director: Optional[str], year: Optional[str|int]) -> str:
-    return f"{_norm_title(title)}::{_norm_name(director)}::{str(year or '').strip()}"
-
-def _sim(a: str, b: str) -> float:
-    return SequenceMatcher(None, a or "", b or "").ratio()
-
-def entity_resolution_movies(df: pl.DataFrame,
-                             title_col="movie_title",
-                             director_col="director_name",
-                             year_col="release_year",
-                             min_title_sim=0.92) -> Tuple[pl.DataFrame, pl.DataFrame]:
+class LLMEntityResolver:
     """
-    通过规范 key 聚合 + 近似标题吸附，合并重复实体。
-    返回 (resolved_df, report_df)
+    LLM驱动的通用实体解析器
+
+    核心创新:
+    1. 零样本: 无需训练数据
+    2. 跨领域: 适用于任何实体类型
+    3. 语义理解: 不只是字符串匹配
     """
-    if not all(c in df.columns for c in [title_col, director_col, year_col]):
-        return df, pl.DataFrame()
 
-    # 初始 canonical key
-    df = df.with_columns([
-        pl.struct([pl.col(title_col), pl.col(director_col), pl.col(year_col)])
-          .map_elements(lambda r: make_canonical_key(r[title_col], r[director_col], r[year_col]))
-          .alias("_canon")
-    ])
+    def __init__(self, llm_client, cache=None):
+        self.llm = llm_client
+        self.cache = cache or {}
 
-    # 对标题近似（同导演+年份下，标题相似的吸附到最常见的canonical）
-    # 1) 统计每个 (director, year) 下 title 的“众数”
-    grp = (df
-           .group_by([director_col, year_col, title_col])
-           .len().rename({"len": "_cnt"}))
-    # 找每个 (director, year) 下计数最高的 title 作为锚点
-    anchor = (grp
-              .group_by([director_col, year_col])
-              .agg([pl.col(title_col).filter(pl.col("_cnt") == pl.col("_cnt").max()).first().alias("_title_anchor")]))
+    async def resolve(
+            self,
+            df: pl.DataFrame,
+            entity_type: str = "entity",
+            max_comparisons: int = 500,
+            confidence_threshold: float = 0.8
+    ) -> Tuple[pl.DataFrame, pl.DataFrame]:
+        """
+        主入口: 对数据集进行实体解析
 
-    df2 = df.join(anchor, on=[director_col, year_col], how="left")
-    # 2) 如果 title 与 anchor 相似度很高，则重写 _canon 的标题部分
-    def _maybe_recanon(r):
-        t = r[title_col]; a = r["_title_anchor"]
-        if not a:
-            return r["_canon"]
-        if _sim(_norm_title(t), _norm_title(a)) >= min_title_sim:
-            return make_canonical_key(a, r[director_col], r[year_col])
-        return r["_canon"]
+        Args:
+            df: 输入数据
+            entity_type: 实体类型描述 (如 "movie", "product")
+            max_comparisons: 最大LLM比较次数
+            confidence_threshold: 合并阈值
 
-    df2 = df2.with_columns([
-        pl.struct([pl.col(title_col), pl.col("_title_anchor"), pl.col(director_col), pl.col(year_col), pl.col("_canon")])
-          .map_elements(_maybe_recanon).alias("_canon2")
-    ]).drop(["_title_anchor"])
-    df2 = df2.drop("_canon").rename({"_canon2": "_canon"})
+        Returns:
+            (resolved_df, report_df)
+        """
 
-    # 3) 聚合：按 _canon 合并，优先非空
-    def _first_non_null(col: str):
-        return pl.when(pl.col(col).is_not_null()).then(pl.col(col)).otherwise(None).first()
+        print(f"[LLM-ER] Resolving {entity_type} entities...")
 
-    keep_cols = [c for c in df2.columns if c != "_canon"]
-    # 简易聚合策略：数值均值、文本首个非空
-    num_cols = [c for c, dt in zip(df2.columns, df2.dtypes) if dt.is_numeric() and c in keep_cols]
-    txt_cols = [c for c in keep_cols if c not in num_cols]
+        # Step 1: 识别关键列
+        print("[LLM-ER] Step 1: Identifying key columns...")
+        key_cols = await self.identify_key_columns(df, entity_type)
+        print(f"[LLM-ER] Key columns: {key_cols}")
 
-    agg_exprs = []
-    for c in num_cols:
-        agg_exprs.append(pl.col(c).mean().alias(c))
-    for c in txt_cols:
-        agg_exprs.append(pl.col(c).filter(pl.col(c).is_not_null()).first().alias(c))
+        # Step 2: 候选对生成（启发式）
+        print("[LLM-ER] Step 2: Generating candidate pairs...")
+        candidates = self.generate_candidates(df, key_cols, max_comparisons)
+        print(f"[LLM-ER] Found {len(candidates)} candidate pairs")
 
-    resolved = (df2.group_by("_canon").agg(agg_exprs)).drop("_canon", ignore_errors=True)
-
-    # 报告：每个 _canon 聚合了多少条
-    report = (df2.group_by("_canon").len().rename({"len": "records_merged"})
-              .sort("records_merged", descending=True))
-    return resolved, report
-
-
-# --------- 缺失值填补（电影） ----------
-async def impute_missing_movies(df: pl.DataFrame,
-                                title_col="movie_title",
-                                director_col="director_name",
-                                year_col="release_year",
-                                numeric_cols: Optional[List[str]] = None,
-                                cat_cols: Optional[List[str]] = None,
-                                use_external=True) -> Tuple[pl.DataFrame, pl.DataFrame]:
-    """
-    先内源填补（组内中位数/众数）→ 可选外源补齐（维基/OMDb/TMDB）。
-    返回 (df_imputed, imputation_report)
-    """
-    if numeric_cols is None:
-        numeric_cols = [c for c, dt in zip(df.columns, df.dtypes) if dt.is_numeric()]
-    if cat_cols is None:
-        cat_cols = [c for c in df.columns if c not in numeric_cols]
-
-    # A) 组内（按 title 或 director）填补
-    work = df.clone()
-
-    # 数值：按导演分组中位数，仍空再全局中位数
-    for c in numeric_cols:
-        med_by_dir = (work.group_by(director_col).agg(pl.col(c).median().alias(f"__med_{c}")))
-        work = work.join(med_by_dir, on=director_col, how="left")
-        work = work.with_columns([
-            pl.when(pl.col(c).is_null()).then(pl.col(f"__med_{c}")).otherwise(pl.col(c)).alias(c)
-        ]).drop(f"__med_{c}")
-        # 全局中位数
-        glob_med = work.select(pl.col(c).median()).item()
-        work = work.with_columns([
-            pl.when(pl.col(c).is_null()).then(pl.lit(glob_med)).otherwise(pl.col(c)).alias(c)
-        ])
-
-    # 类别：按导演众数，再全局众数
-    def col_mode(series: pl.Series):
-        try:
-            # 取出现频率最高的非空
-            vc = series.drop_nulls().to_list()
-            if not vc:
-                return None
-            from collections import Counter
-            return Counter(vc).most_common(1)[0][0]
-        except Exception:
-            return None
-
-    for c in cat_cols:
-        # director 层面的众数
-        by_dir = work.group_by(director_col).agg(pl.col(c)).lazy().collect()
-        fill_map = {}
-        for i in range(by_dir.height):
-            d = by_dir[director_col][i]
-            fill_map[d] = col_mode(by_dir[c][i])
-        work = work.with_columns([
-            pl.when(pl.col(c).is_null()).then(
-                pl.col(director_col).map_elements(lambda d: fill_map.get(d))
-            ).otherwise(pl.col(c)).alias(c)
-        ])
-        # 全局众数
-        gmode = col_mode(work[c])
-        work = work.with_columns([
-            pl.when(pl.col(c).is_null()).then(pl.lit(gmode)).otherwise(pl.col(c)).alias(c)
-        ])
-
-    impute_rows_before_external = work.height
-
-    # B) 外源补齐（可选）
-    report_rows = []
-    if use_external and all(k in work.columns for k in [title_col, year_col]):
-        enricher = MovieEnricher(
-            use_wiki=True,
-            use_omdb=bool(os.getenv("OMDB_API_KEY", "").strip()),
-            use_tmdb=bool(os.getenv("TMDB_API_KEY", "").strip())
+        # Step 3: LLM判断
+        print("[LLM-ER] Step 3: LLM-based comparison...")
+        merge_graph = await self.compare_pairs(
+            df, candidates, entity_type, confidence_threshold
         )
-        # 仅对仍缺失的行发起补齐
-        need_cols = ["genre","runtime_minutes","country_code","imdb_rating","budget_usd","revenue_usd","director_name"]
-        missing_mask = None
-        for c in need_cols:
-            if c in work.columns:
-                m = work[c].is_null()
-                missing_mask = m if missing_mask is None else (missing_mask | m)
 
-        if missing_mask is not None:
-            idxs = [i for i, v in enumerate(missing_mask) if v]
-            # 适当限流并发
-            sem = asyncio.Semaphore(6)
-            async def one(i):
-                async with sem:
-                    t = work[title_col][i]
-                    y = work[year_col][i]
-                    info = await enricher.enrich(str(t), str(y) if y is not None else None)
-                    return i, info
-            tasks = [one(i) for i in idxs[:2000]]  # 防止过大样本时触发配额；可调
-            for coro in asyncio.as_completed(tasks):
-                i, info = await coro
-                if info:
-                    # 写回可补的字段
-                    updates = {}
-                    for k in need_cols:
-                        if k in work.columns and (work[k][i] is None) and (info.get(k) is not None):
-                            updates[k] = info[k]
-                    if updates:
-                        # polars 行级更新：使用 with_columns + when/then
-                        for k, v in updates.items():
-                            work = work.with_columns([
-                                pl.when(pl.arange(0, work.height) == i).then(pl.lit(v)).otherwise(pl.col(k)).alias(k)
-                            ])
-                        report_rows.append({"row_index": i, **updates})
-            await enricher.aclose()
+        # Step 4: 合并
+        print("[LLM-ER] Step 4: Merging entities...")
+        resolved_df = self.merge_entities(df, merge_graph)
 
-    report = pl.DataFrame(report_rows) if report_rows else pl.DataFrame()
-    return work, report
+        # Step 5: 生成报告
+        report_df = self.generate_report(df, resolved_df, merge_graph)
+
+        return resolved_df, report_df
+
+    async def identify_key_columns(
+            self,
+            df: pl.DataFrame,
+            entity_type: str
+    ) -> List[str]:
+        """
+        让LLM识别哪些列是关键标识列
+        """
+
+        # 缓存key
+        cache_key = f"key_cols_{hash(str(df.columns))}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        # 准备schema信息
+        schema_info = {}
+        for col in df.columns[:20]:  # 限制列数
+            try:
+                schema_info[col] = {
+                    "dtype": str(df[col].dtype),
+                    "sample": df[col].head(3).drop_nulls().to_list()[:3],
+                    "null_pct": round(df[col].null_count() / len(df) * 100, 1)
+                }
+            except:
+                continue
+
+        prompt = f"""You are analyzing a dataset of {entity_type} records.
+
+Schema:
+{json.dumps(schema_info, indent=2)}
+
+Identify 1-3 columns that are KEY IDENTIFIERS for determining if two records are the same {entity_type}.
+
+Key columns typically:
+- Uniquely identify entities (names, titles, IDs)
+- Have low null percentage
+- Are string or categorical types
+
+Return ONLY a JSON array of column names:
+["col1", "col2"]"""
+
+        try:
+            response = await self.llm.chat("gpt-4o-mini", [
+                {"role": "user", "content": prompt}
+            ])
+
+            key_cols = json.loads(response.strip())
+
+            # 验证列名
+            key_cols = [c for c in key_cols if c in df.columns]
+
+            if not key_cols:
+                # 回退: 选择第一个字符串列
+                key_cols = [c for c in df.columns
+                            if df[c].dtype == pl.Utf8][:1]
+
+            self.cache[cache_key] = key_cols
+            return key_cols
+
+        except Exception as e:
+            print(f"[LLM-ER] Error in identify_key_columns: {e}")
+            # 回退策略
+            return [c for c in df.columns if df[c].dtype == pl.Utf8][:1]
+
+    def generate_candidates(
+            self,
+            df: pl.DataFrame,
+            key_cols: List[str],
+            max_pairs: int
+    ) -> List[Tuple[int, int]]:
+        """
+        生成候选重复对
+
+        策略:
+        1. Blocking by first character
+        2. 组内简单相似度过滤
+        3. 限制总数
+        """
+
+        if not key_cols:
+            return []
+
+        candidates = []
+        primary_col = key_cols[0]
+
+        # Blocking: 按首字母分组
+        try:
+            # 添加首字母列
+            df_with_block = df.with_columns([
+                pl.col(primary_col)
+                .str.slice(0, 1)
+                .str.to_lowercase()
+                .alias("_block_key")
+            ])
+
+            # 按block分组
+            for block_key, group_df in df_with_block.group_by("_block_key"):
+                if len(group_df) <= 1:
+                    continue
+
+                indices = group_df.select(pl.arange(0, pl.count()).alias("idx"))["idx"].to_list()
+
+                # 组内两两比较（限制数量）
+                for i, idx1 in enumerate(indices):
+                    for idx2 in indices[i + 1:i + 11]:  # 最多10个
+                        # 简单预筛选
+                        val1 = str(df[primary_col][idx1] or "")
+                        val2 = str(df[primary_col][idx2] or "")
+
+                        if self.quick_similarity(val1, val2) > 0.5:
+                            candidates.append((idx1, idx2))
+
+                        if len(candidates) >= max_pairs:
+                            return candidates[:max_pairs]
+
+        except Exception as e:
+            print(f"[LLM-ER] Error in generate_candidates: {e}")
+            # 回退: 随机采样
+            n = min(len(df), 100)
+            for i in range(n):
+                for j in range(i + 1, min(i + 6, n)):
+                    candidates.append((i, j))
+
+        return candidates[:max_pairs]
+
+    def quick_similarity(self, s1: str, s2: str) -> float:
+        """快速相似度（用于预筛选）"""
+        return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+
+    async def compare_pairs(
+            self,
+            df: pl.DataFrame,
+            candidates: List[Tuple[int, int]],
+            entity_type: str,
+            threshold: float
+    ) -> Dict[int, int]:
+        """
+        用LLM比较候选对
+
+        返回: merge_graph {from_idx: to_idx}
+        """
+
+        merge_graph = {}
+
+        # 批量处理（减少API调用）
+        batch_size = 10
+        for i in range(0, len(candidates), batch_size):
+            batch = candidates[i:i + batch_size]
+
+            tasks = [
+                self.are_same_entity(
+                    df.row(idx1, named=True),
+                    df.row(idx2, named=True),
+                    entity_type
+                )
+                for idx1, idx2 in batch
+            ]
+
+            results = await asyncio.gather(*tasks)
+
+            for (idx1, idx2), (same, confidence) in zip(batch, results):
+                if same and confidence >= threshold:
+                    # Union-Find: 合并到同一个cluster
+                    root1 = self.find_root(merge_graph, idx1)
+                    root2 = self.find_root(merge_graph, idx2)
+                    if root1 != root2:
+                        merge_graph[root2] = root1
+
+        return merge_graph
+
+    def find_root(self, merge_graph: Dict[int, int], idx: int) -> int:
+        """Union-Find: 找根节点"""
+        if idx not in merge_graph:
+            return idx
+        root = idx
+        while root in merge_graph:
+            root = merge_graph[root]
+        # 路径压缩
+        while idx != root:
+            next_idx = merge_graph[idx]
+            merge_graph[idx] = root
+            idx = next_idx
+        return root
+
+    async def are_same_entity(
+            self,
+            entity1: Dict[str, Any],
+            entity2: Dict[str, Any],
+            entity_type: str
+    ) -> Tuple[bool, float]:
+        """
+        核心: 用LLM判断两个实体是否相同
+        """
+
+        # 缓存
+        cache_key = f"{hash(str(sorted(entity1.items())))}_{hash(str(sorted(entity2.items())))}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        # 简化显示（只显示非空字段）
+        e1_clean = {k: v for k, v in entity1.items() if v is not None}
+        e2_clean = {k: v for k, v in entity2.items() if v is not None}
+
+        prompt = f"""Are these two {entity_type} records the same entity?
+
+Record 1: {json.dumps(e1_clean)}
+Record 2: {json.dumps(e2_clean)}
+
+Consider variations like:
+- Typos/spelling
+- Missing words
+- Abbreviations  
+- Different formats
+
+Respond in JSON:
+{{"same": true/false, "confidence": 0.0-1.0}}"""
+
+        try:
+            response = await self.llm.chat("gpt-4o-mini", [
+                {"role": "user", "content": prompt}
+            ])
+
+            result = json.loads(response.strip())
+            same = result["same"]
+            confidence = result["confidence"]
+
+            self.cache[cache_key] = (same, confidence)
+            return same, confidence
+
+        except Exception as e:
+            print(f"[LLM-ER] Error in are_same_entity: {e}")
+            # 回退: 保守策略
+            return False, 0.0
+
+    def merge_entities(
+            self,
+            df: pl.DataFrame,
+            merge_graph: Dict[int, int]
+    ) -> pl.DataFrame:
+        """
+        应用合并
+        """
+
+        if not merge_graph:
+            return df
+
+        # 为每行分配cluster ID
+        cluster_ids = []
+        for i in range(len(df)):
+            cluster_ids.append(self.find_root(merge_graph, i))
+
+        df_with_cluster = df.with_columns([
+            pl.Series("_cluster_id", cluster_ids)
+        ])
+
+        # 按cluster聚合
+        # 策略: 数值取平均，文本取首个非空
+        agg_exprs = []
+        for col in df.columns:
+            if df[col].dtype.is_numeric():
+                agg_exprs.append(pl.col(col).mean().alias(col))
+            else:
+                agg_exprs.append(
+                    pl.col(col).filter(pl.col(col).is_not_null()).first().alias(col)
+                )
+
+        resolved = df_with_cluster.group_by("_cluster_id").agg(agg_exprs)
+        resolved = resolved.drop("_cluster_id")
+
+        return resolved
+
+    def generate_report(
+            self,
+            original_df: pl.DataFrame,
+            resolved_df: pl.DataFrame,
+            merge_graph: Dict[int, int]
+    ) -> pl.DataFrame:
+        """
+        生成ER报告
+        """
+
+        # 统计每个cluster合并了多少行
+        cluster_sizes = {}
+        for idx in range(len(original_df)):
+            root = self.find_root(merge_graph, idx)
+            cluster_sizes[root] = cluster_sizes.get(root, 0) + 1
+
+        report_data = []
+        for cluster_id, size in cluster_sizes.items():
+            if size > 1:  # 只报告实际合并的
+                report_data.append({
+                    "cluster_id": cluster_id,
+                    "records_merged": size
+                })
+
+        if not report_data:
+            return pl.DataFrame({
+                "message": ["No duplicates found"]
+            })
+
+        report = pl.DataFrame(report_data).sort("records_merged", descending=True)
+        return report
+
+
+# ============= 使用示例 =============
+
+async def example_usage():
+    """演示如何使用"""
+
+    # 1. 准备数据
+    df = pl.DataFrame({
+        "movie_title": ["The Dark Knight", "Dark Knight", "Inception", "Inception", "Interstellar"],
+        "director": ["Nolan", "Nolan", "Nolan", "Christopher Nolan", "C. Nolan"],
+        "year": [2008, 2008, 2010, 2010, 2014],
+        "budget": [185, None, 160, 160, 165]
+    })
+
+    # 2. 初始化resolver
+    from your_llm_client import LLMClient
+    llm = LLMClient(api_key="...")
+    resolver = LLMEntityResolver(llm)
+
+    # 3. 执行ER
+    resolved_df, report_df = await resolver.resolve(
+        df,
+        entity_type="movie",
+        max_comparisons=100,
+        confidence_threshold=0.8
+    )
+
+    print("Original:", len(df), "rows")
+    print("Resolved:", len(resolved_df), "rows")
+    print("\nReport:")
+    print(report_df)
+
+    # 预期输出:
+    # Original: 5 rows
+    # Resolved: 3 rows  (合并了Dark Knight和Inception的重复)
+
+    return resolved_df, report_df
+
+
+if __name__ == "__main__":
+    asyncio.run(example_usage())
