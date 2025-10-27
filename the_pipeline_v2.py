@@ -9,12 +9,24 @@ import httpx
 import polars as pl
 from tqdm.asyncio import tqdm_asyncio
 
+# ===== Template驱动的智能Schema映射（新增）=====
+try:
+    sys.path.insert(0, str(Path(__file__).parent / "templates"))
+    from template_utils import TemplateManager, SchemaMapper, DynamicTemplate
+
+    _HAS_TEMPLATE_UTILS = True
+except ImportError:
+    _HAS_TEMPLATE_UTILS = False
+    print("[INFO] template_utils not found, using legacy template logic")
+
 # === I/O：Polars 为主，Pandas 仅兜底读取（随后立刻转 Polars）===
 try:
     import pandas as pd
+
     _HAS_PANDAS = True
 except ImportError:
     _HAS_PANDAS = False
+
 
 def _read_any_backend(path: Path) -> pl.DataFrame:
     """多格式读取器：始终返回 Polars DataFrame；必要时用 pandas 读取后再 pl.from_pandas。"""
@@ -83,6 +95,7 @@ def _read_any_backend(path: Path) -> pl.DataFrame:
             return pl.from_pandas(pdf)
         raise
 
+
 # === 扩展扫描策略 ===
 def _brace_expand(pat: str) -> List[str]:
     m = re.search(r"\{([^}]+)\}", pat)
@@ -95,6 +108,7 @@ def _brace_expand(pat: str) -> List[str]:
     for a in alts:
         out.extend(_brace_expand(head + a + tail))
     return out
+
 
 def _expand_globs(patterns: List[str]) -> List[Path]:
     if not patterns:
@@ -122,6 +136,7 @@ def _expand_globs(patterns: List[str]) -> List[Path]:
     uniq = sorted({f.resolve() for f in files})
     return uniq
 
+
 def _expand_globs_mixed(patterns: List[str]) -> List[Path]:
     """
     扫描 datas/、datalake/，如果存在 data/ 则混合加入。
@@ -141,6 +156,7 @@ def _expand_globs_mixed(patterns: List[str]) -> List[Path]:
                 new_patterns.append(str(Path(base) / pat))
     return _expand_globs(new_patterns)
 
+
 # === 外部增强：仅"就地补全"，不新增行/列 ===
 from enrichment_providers import (
     get_provider_for_auto_domain,
@@ -151,6 +167,7 @@ try:
     import yaml  # optional for .yaml config
 except ImportError:
     yaml = None
+
 
 # ========================= JSON 容错读取 & 温和扁平化 =========================
 def _flatten_df(df: pl.DataFrame, max_rounds: int = 1) -> pl.DataFrame:
@@ -176,12 +193,14 @@ def _flatten_df(df: pl.DataFrame, max_rounds: int = 1) -> pl.DataFrame:
             out = out.unnest(c)
     return out
 
+
 def _json_sanitize(s: str) -> str:
     s = s.lstrip("\ufeff")
     s = re.sub(r"//.*?$", "", s, flags=re.MULTILINE)
     s = re.sub(r"/\*.*?\*/", "", s, flags=re.DOTALL)
     s = re.sub(r",\s*([\]}])", r"\1", s)
     return s
+
 
 def _read_json_lenient(path: Path) -> pl.DataFrame:
     try:
@@ -207,6 +226,7 @@ def _read_json_lenient(path: Path) -> pl.DataFrame:
         return pl.from_dicts([obj])
     raise RuntimeError(f"Failed to read JSON: {path}")
 
+
 def _read_ndjson_lenient(path: Path) -> pl.DataFrame:
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     good = []
@@ -222,6 +242,7 @@ def _read_ndjson_lenient(path: Path) -> pl.DataFrame:
         return pl.from_dicts(good)
     return _read_json_lenient(path)
 
+
 # --- Excel 读取（pandas 兜底） ---
 def _read_excel_df(path: Path) -> pl.DataFrame:
     try:
@@ -233,6 +254,7 @@ def _read_excel_df(path: Path) -> pl.DataFrame:
             return pl.from_pandas(pdf)
         except Exception as e:
             raise RuntimeError(f"Failed to read Excel: {path} ({e})")
+
 
 def scan_any(path: Path) -> pl.LazyFrame:
     suf = path.suffix.lower()
@@ -260,6 +282,7 @@ def scan_any(path: Path) -> pl.LazyFrame:
         ignore_errors=True
     )
 
+
 def read_any_df(path: Path) -> pl.DataFrame:
     suf = path.suffix.lower()
     if suf == ".csv":
@@ -282,6 +305,7 @@ def read_any_df(path: Path) -> pl.DataFrame:
         ignore_errors=True
     )
 
+
 def preview_any(path: Path) -> tuple[str, str]:
     lf = scan_any(path)
     schema = lf.collect_schema()
@@ -289,6 +313,7 @@ def preview_any(path: Path) -> tuple[str, str]:
     row_df = lf.limit(1).collect()
     row = [str(row_df[c][0]) if (c in row_df.columns and row_df.height > 0) else "" for c in cols]
     return ",".join(cols), ",".join(row)
+
 
 # ============================= 配置 & LLM ================================
 @dataclass
@@ -308,9 +333,10 @@ class Config:
     universal_merge: bool = True
 
     # —— 安全模式（可选，不改原逻辑；只是限流避免内存爆）——
-    max_files: int = 20                 # 一次最多合并多少个文件（默认20）
-    max_rows_per_file: int = 200_000    # 每个文件最多读取多少行（超出截断）
+    max_files: int = 20  # 一次最多合并多少个文件（默认20）
+    max_rows_per_file: int = 200_000  # 每个文件最多读取多少行（超出截断）
     filter_by_query_keywords: bool = True  # 根据 query 关键词粗过滤文件名
+
 
 # 👉 默认扫描"用户上传 datas/ + 本地 datalake/"
 DEFAULT_CONFIG = Config(
@@ -321,6 +347,7 @@ DEFAULT_CONFIG = Config(
     ],
     out="merged_training.csv"
 )
+
 
 class LLMCache:
     def __init__(self, db: Path):
@@ -345,6 +372,7 @@ class LLMCache:
         with sqlite3.connect(self.db) as con:
             con.execute("INSERT OR REPLACE INTO cache VALUES(?,?)", (h, completion));
             con.commit()
+
 
 class LLMClient:
     def __init__(self, cache: LLMCache, cfg: Config):
@@ -383,8 +411,10 @@ class LLMClient:
     async def aclose(self):
         await self.client.aclose()
 
+
 # ========= LLM 驱动：域识别 + 动态模板推断（无 if/elif 规则） =========
 import json as _json_mod, re as _re_mod
+
 
 def _extract_json_block(txt: str) -> dict:
     try:
@@ -405,6 +435,7 @@ def _extract_json_block(txt: str) -> dict:
             pass
     raise ValueError("LLM did not return valid JSON.")
 
+
 async def detect_domain_from_query_llm(client: LLMClient, query: str, templates: dict) -> str:
     domains = [d for d in templates.keys() if not d.startswith("_")]
     domains_with_other = domains + (["other"] if "other" not in domains else [])
@@ -419,6 +450,7 @@ Query:
     out = await client.chat("gpt-4o-mini", [{"role": "user", "content": prompt}])
     cand = out.strip().split()[0].strip()
     return cand if cand in domains_with_other else "other"
+
 
 async def llm_dynamic_template_from_query(client: LLMClient, query: str) -> tuple[list, list]:
     prompt = f"""
@@ -444,6 +476,7 @@ User query:
                            "label_or_score"]
     if not jks:   jks = ["entity_id", "entity_name", "date"]
     return feats, jks
+
 
 async def llm_refine_join_keys_with_headers(client: LLMClient, query: str, join_keys: list[str],
                                             headers_union: list[str]) -> list[str]:
@@ -472,6 +505,7 @@ Return STRICT JSON ONLY:
         pass
     return join_keys
 
+
 # ===== 关键词提取（LLM + 正则兜底）=====
 _TOPIC_PROMPT = """
 You extract the SINGLE most specific topical keyword from a user's query about a database.
@@ -482,6 +516,7 @@ Examples:
 - "NBA players database with ..." -> nba
 If unsure, return a short noun from the query.
 """
+
 
 async def extract_topic_keyword(client: LLMClient, query: str) -> str:
     try:
@@ -499,11 +534,44 @@ async def extract_topic_keyword(client: LLMClient, query: str) -> str:
     if m:
         return m.group(1).lower()
     # 再兜底：从关键词里挑一个最像主题名的
-    toks = [t for t in re.findall(r"[A-Za-z][A-Za-z0-9_]{2,}", query) if t.lower() not in {"need","with","and","the","a","an","please","help","dataset","database"}]
+    toks = [t for t in re.findall(r"[A-Za-z][A-Za-z0-9_]{2,}", query) if
+            t.lower() not in {"need", "with", "and", "the", "a", "an", "please", "help", "dataset", "database"}]
     return (toks[0].lower() if toks else "topic")
+
 
 async def bootstrap_features_from_templates_llm_first(client: LLMClient, query: str, templates: dict) -> tuple[
     str, list[str], list[str], list[str]]:
+    """
+    增强版：优先使用template_utils动态生成template（带alias_rules）
+    回退：使用原有逻辑
+    """
+    # ===== 新增：尝试使用TemplateManager动态生成template =====
+    if _HAS_TEMPLATE_UTILS:
+        try:
+            # 创建TemplateManager（会自动缓存）
+            tm = TemplateManager(client, cache_path=Path("templates/dynamic_templates.json"))
+
+            # 注意：这里需要discovered_datasets信息，但这个函数被调用时还没发现数据集
+            # 所以我们先用LLM模式生成一个基础template，后续在有数据集信息时再细化
+            # 这里先返回基于query的动态推断
+
+            # 使用LLM动态推断（不依赖预定义模板）
+            feats, jks = await llm_dynamic_template_from_query(client, query)
+            canon = list(dict.fromkeys(jks + feats))
+
+            # 推断领域名称
+            domain = await detect_domain_from_query_llm(client, query, templates)
+            if domain == "other":
+                domain = "dynamic"
+
+            print(f"[TemplateManager] Using dynamic template generation for domain: {domain}")
+
+            return domain, feats, jks, canon
+
+        except Exception as e:
+            print(f"[TemplateManager] Failed to use template_utils: {e}, falling back to legacy logic")
+
+    # ===== 原有逻辑（回退）=====
     domain = await detect_domain_from_query_llm(client, query, templates)
     if domain != "other" and domain in templates:
         body = templates[domain]
@@ -515,13 +583,16 @@ async def bootstrap_features_from_templates_llm_first(client: LLMClient, query: 
     canon = list(dict.fromkeys(jks + feats))
     return (domain if domain != "other" else "fallback"), feats, jks, canon
 
+
 # ======================= 模板库（templates/ 目录）=========================
 TEMPLATES_DIR = Path("templates")
 DOMAIN_FILE = TEMPLATES_DIR / "last_domain.txt"
 DOMAIN_DB = TEMPLATES_DIR / "domain_templates.json"
 
+
 def _ensure_templates_dir():
     TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def load_domain_templates() -> dict:
     _ensure_templates_dir()
@@ -554,6 +625,7 @@ def load_domain_templates() -> dict:
         DOMAIN_DB.write_text(json.dumps(fallback, indent=2, ensure_ascii=False))
     return json.loads(DOMAIN_DB.read_text(encoding="utf-8"))
 
+
 def get_last_domain(default="fallback") -> str:
     _ensure_templates_dir()
     if DOMAIN_FILE.exists():
@@ -562,9 +634,11 @@ def get_last_domain(default="fallback") -> str:
             return s
     return default
 
+
 def save_last_domain(domain: str):
     _ensure_templates_dir()
     DOMAIN_FILE.write_text(domain.strip() or "fallback", encoding="utf-8")
+
 
 # ======================== 关键词提取 ============================
 def _keywords_from_query(q: str) -> list[str]:
@@ -574,6 +648,7 @@ def _keywords_from_query(q: str) -> list[str]:
     # 常见停用词过滤（可再扩充）
     stop = {"dataset", "data", "file", "table", "model", "train", "test", "csv", "json"}
     return [t for t in toks if t not in stop]
+
 
 # ======================== 策略（模板域可扩展）===========================
 class DomainPolicy:
@@ -655,9 +730,11 @@ class DomainPolicy:
         except Exception:
             return True  # 出错就放行
 
+
 # ======================== 映射→重命名→合并 ============================
 MAP_RE = re.compile(r"^[\s\-•\*]*([\w\s\.\-\_/]+?)\s*(?:→|->|:)\s*([^\(\n]+?)(?:\s*\(index.*)?$", re.I)
 KEY_RE = re.compile(r"^[\s•\-*\t]*([\w\.\-_/]+)", re.I)
+
 
 def parse_mapping(text: str) -> Dict[str, str]:
     m = {}
@@ -669,6 +746,7 @@ def parse_mapping(text: str) -> Dict[str, str]:
                 m[feat.strip()] = col.strip()
     return m
 
+
 def parse_keys(text: str) -> List[str]:
     ks = []
     for line in text.splitlines():
@@ -677,14 +755,17 @@ def parse_keys(text: str) -> List[str]:
             ks.append(mm.group(1).strip())
     return ks
 
+
 # ===== 从 Query 提取用户“点名列” =====
 _REQ_SPLIT_RE = re.compile(r"[,\uFF0C，、/|;]|(?:\band\b)|(?:\bwith\b)", re.IGNORECASE)
+
 
 def _norm_feat_name(s: str) -> str:
     """下划线小写化；只做匹配，不改动源数据列名。"""
     s = s.strip().strip(".")
     s = re.sub(r"[^A-Za-z0-9_]+", "_", s).strip("_")
     return s.lower()
+
 
 def extract_requested_columns_from_query(q: str) -> list[str]:
     """
@@ -723,6 +804,7 @@ def extract_requested_columns_from_query(q: str) -> list[str]:
             uniq.append(f)
     return uniq
 
+
 # ===== 领域关键词抽取（通用）=====
 def extract_domain_keyword(q: str) -> Optional[str]:
     """
@@ -756,7 +838,8 @@ def extract_domain_keyword(q: str) -> Optional[str]:
 
 
 # ===== 在一张表中，用领域关键词“偏好匹配”点名列（通用评分）=====
-def resolve_requested_columns(headers: list[str], requested: list[str], domain: Optional[str]) -> Dict[str, Optional[str]]:
+def resolve_requested_columns(headers: list[str], requested: list[str], domain: Optional[str]) -> Dict[
+    str, Optional[str]]:
     """
     输入：headers 原始列名列表；requested 点名列（规范化后的 id/ph/quality...）；domain 领域关键词（如 wine）
     输出：字典 {requested_feat -> 实际匹配到的源列名或 None}
@@ -780,7 +863,7 @@ def resolve_requested_columns(headers: list[str], requested: list[str], domain: 
         nf = norm(feat)
 
         best_idx = None
-        best_score = -10**9
+        best_score = -10 ** 9
 
         for i, (h, nh) in enumerate(zip(H, Hn)):
             score = 0
@@ -824,9 +907,11 @@ def resolve_requested_columns(headers: list[str], requested: list[str], domain: 
 
     return mapping
 
+
 # ===== 列语义打分：基于列名 + 值分布（域感知强化版）=====
 def _norm_token(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
+
 
 def _series_numeric_ratio(df: pl.DataFrame, col: str) -> float:
     try:
@@ -836,6 +921,7 @@ def _series_numeric_ratio(df: pl.DataFrame, col: str) -> float:
     except Exception:
         return 0.0
 
+
 def _series_range_ratio(df: pl.DataFrame, col: str, lo: float, hi: float) -> float:
     try:
         s = df.get_column(col).cast(pl.Float64, strict=False)
@@ -844,6 +930,7 @@ def _series_range_ratio(df: pl.DataFrame, col: str, lo: float, hi: float) -> flo
     except Exception:
         return 0.0
 
+
 def _series_int_band_ratio(df: pl.DataFrame, col: str, lo: int, hi: int) -> float:
     try:
         s = df.get_column(col).cast(pl.Int64, strict=False)
@@ -851,6 +938,7 @@ def _series_int_band_ratio(df: pl.DataFrame, col: str, lo: int, hi: int) -> floa
         return float(ok.sum()) / max(1.0, float(df.height))
     except Exception:
         return 0.0
+
 
 def _semantic_score_for_feature(df: pl.DataFrame, req_feat: str, header: str, topic_kw: Optional[str]) -> float:
     """
@@ -967,6 +1055,7 @@ Header  = {header}
 Row     = {row}
 Which column(s) look like a unique entity ID suitable for joining? Bullet list or `none`."""
 
+
 def _prefer_domain_id_from_headers(hdr_list: List[str], req_cols: List[str], topic_kw: Optional[str]) -> Optional[str]:
     """
     仅用列名做域感知的 id 选择：优先 wine_id / id_wine / wineid 等。
@@ -989,18 +1078,54 @@ def _prefer_domain_id_from_headers(hdr_list: List[str], req_cols: List[str], top
                 return h
     return None
 
-async def map_one_dataset(client, path, feats, cfg, policy: DomainPolicy | None = None):
+
+async def map_one_dataset(client, path, feats, cfg, policy: DomainPolicy | None = None, dynamic_template=None):
+    """增强版：支持dynamic_template指导的schema映射"""
     header_str, row_str = preview_any(path)
     hdr_list = [h.strip() for h in header_str.split(",")]
-    mapping_raw = await client.chat(cfg.map_model, [{
-        "role": "user", "content": RIGHT_MAP_TMPL.format(
-            header=header_str, row=row_str, targets=', '.join(feats), dname=path.name)
-    }])
+
+    # ===== 新增：尝试使用SchemaMapper（带alias_rules指导） =====
+    mapping = {}
+    if _HAS_TEMPLATE_UTILS and dynamic_template is not None:
+        try:
+            tm = TemplateManager(client, cache_path=Path("templates/dynamic_templates.json"))
+            mapper = SchemaMapper(client, tm)
+
+            # 准备sample数据
+            cols = [h.strip() for h in header_str.split(",") if h.strip()]
+            sample_values = [s.strip() for s in row_str.split(",")]
+            sample = dict(zip(cols, sample_values)) if len(cols) == len(sample_values) else {}
+
+            # 使用template指导映射
+            mapping = await mapper.map_schema_with_template(
+                source_columns=hdr_list,
+                source_sample=sample,
+                template=dynamic_template,
+                target_schema=feats
+            )
+
+            # 过滤掉None值
+            mapping = {k: v for k, v in mapping.items() if v is not None}
+
+            if mapping:
+                print(f"[SchemaMapper] {path.name}: {len(mapping)} fields")
+        except Exception as e:
+            print(f"[SchemaMapper] Failed for {path.name}: {e}")
+            mapping = {}
+
+    # ===== 回退：使用原有的LLM映射 =====
+    if not mapping:
+        mapping_raw = await client.chat(cfg.map_model, [{
+            "role": "user", "content": RIGHT_MAP_TMPL.format(
+                header=header_str, row=row_str, targets=', '.join(feats), dname=path.name)
+        }])
+        mapping = parse_mapping(mapping_raw)
+
+    # 获取join keys
     key_raw = await client.chat(cfg.map_model, [{
         "role": "user", "content": RIGHT_KEY_TMPL.format(
             dname=path.name, header=header_str, row=row_str)
     }])
-    mapping = parse_mapping(mapping_raw)
     keys = parse_keys(key_raw)
 
     # 兜底：规范名≈同名列
@@ -1033,6 +1158,7 @@ async def map_one_dataset(client, path, feats, cfg, policy: DomainPolicy | None 
 
     return mapping, keys
 
+
 def apply_mapping_and_rename(
         df: pl.DataFrame,
         mapping: dict,
@@ -1048,6 +1174,7 @@ def apply_mapping_and_rename(
     - passthrough_all=True 时，把未被使用且不与特征名冲突的原列也带上；
     - keep_all_numeric=True 时，强制保留所有数值列
     """
+
     def _clean(val: str) -> str:
         s = re.split(r"\(index.*?\)", str(val))[0].split("|")[0].split(",")[0].strip()
         return s
@@ -1100,17 +1227,20 @@ def apply_mapping_and_rename(
 
     return df.select(exprs) if exprs else df.select([])
 
+
 def choose_base_dataset(renamed_frames, join_keys):
     scored = [(sum(1 for k in join_keys if k in df.columns), df.width, p, df) for p, df in renamed_frames]
     scored.sort(reverse=True)
     _, _, p, df = scored[0]
     return p, df
 
+
 def find_join_cols(cols_a, cols_b, join_keys, canon):
     common = [k for k in join_keys if k in cols_a and k in cols_b]
     if not common:
         common = [c for c in (canon or []) if c in cols_a and c in cols_b][:2]
     return common
+
 
 def _coalesce_right_prefer(df: pl.DataFrame, *, suffix: str = "_r", skip_cols: list[str] | None = None) -> pl.DataFrame:
     """
@@ -1144,6 +1274,7 @@ def _coalesce_right_prefer(df: pl.DataFrame, *, suffix: str = "_r", skip_cols: l
         out = out.drop(drops)
     return out
 
+
 # ============== Universal Merge（保留所有列与行） ==============
 def _align_columns(df: pl.DataFrame, all_cols: list[str]) -> pl.DataFrame:
     add_expr = []
@@ -1153,6 +1284,7 @@ def _align_columns(df: pl.DataFrame, all_cols: list[str]) -> pl.DataFrame:
     if add_expr:
         df = df.with_columns(add_expr)
     return df.select(all_cols)
+
 
 def _choose_target_dtype(dtypes: list[pl.datatypes.DataType]) -> pl.datatypes.DataType:
     """Choose a safe common dtype for a column across frames."""
@@ -1169,6 +1301,7 @@ def _choose_target_dtype(dtypes: list[pl.datatypes.DataType]) -> pl.datatypes.Da
         return list(set(nz))[0]
     return pl.Utf8
 
+
 def _unify_dtypes(frames: list[pl.DataFrame]) -> tuple[list[str], dict[str, pl.datatypes.DataType]]:
     all_cols: list[str] = []
     for f in frames:
@@ -1181,6 +1314,7 @@ def _unify_dtypes(frames: list[pl.DataFrame]) -> tuple[list[str], dict[str, pl.d
             dtypes_map[c].append(f.schema.get(c, pl.Null))
     target = {c: _choose_target_dtype(dts) for c, dts in dtypes_map.items()}
     return all_cols, target
+
 
 def _cast_to_targets(df: pl.DataFrame, target_dtypes: dict[str, pl.datatypes.DataType]) -> pl.DataFrame:
     exprs = []
@@ -1195,6 +1329,7 @@ def _cast_to_targets(df: pl.DataFrame, target_dtypes: dict[str, pl.datatypes.Dat
                 exprs.append(pl.col(c))
     return df.select([exprs[i] for i in range(len(exprs))])
 
+
 def _outer_join_many(frames: list[pl.DataFrame], join_cols: list[str], policy: DomainPolicy):
     if not frames:
         return pl.DataFrame(), []
@@ -1203,15 +1338,16 @@ def _outer_join_many(frames: list[pl.DataFrame], join_cols: list[str], policy: D
         jc = [c for c in join_cols if c in merged.columns and c in df.columns]
         if not jc:
             idx = next((i for i, f in enumerate(frames) if f is df), len(frames) - 1)
-            return merged, frames[idx+1:]
+            return merged, frames[idx + 1:]
         merged = merged.unique(subset=jc, keep="first")
         df = df.unique(subset=jc, keep="first")
         if not policy.blowup_guard(merged, df, jc):
             idx = next((i for i, f in enumerate(frames) if f is df), len(frames) - 1)
-            return merged, frames[idx+1:]
+            return merged, frames[idx + 1:]
         merged = merged.join(df, on=jc, how="full", suffix="_r")
         merged = _coalesce_right_prefer(merged, suffix="_r", skip_cols=jc)  # 右侧非空覆盖，然后删 *_r
     return merged, []
+
 
 def universal_merge(renamed: list[Tuple[Path, pl.DataFrame]],
                     join_keys: list[str],
@@ -1269,6 +1405,7 @@ def universal_merge(renamed: list[Tuple[Path, pl.DataFrame]],
     stats["vstack_files"] = [*(stats["without_keys"]), *[str(x) for x in stats["outer_join_chain"][1:]]]
     return merged_all, stats
 
+
 # ================================ 主流程 ================================
 async def process(cfg: Config):
     print(f"[Q] {cfg.question}")
@@ -1302,6 +1439,46 @@ async def process(cfg: Config):
     domain, feats, tpl_join, canon = await bootstrap_features_from_templates_llm_first(
         client, cfg.question, templates
     )
+
+    # ===== 新增：使用完整数据集信息生成详细的dynamic template =====
+    dynamic_template = None
+    if _HAS_TEMPLATE_UTILS:
+        try:
+            # 准备数据集信息供template生成使用
+            discovered_datasets = []
+            for p in paths[:10]:  # 只用前10个数据集，避免prompt过长
+                try:
+                    hdr, sample_row = preview_any(p)
+                    cols = [h.strip() for h in hdr.split(",") if h.strip()]
+                    sample = dict(zip(cols, [s.strip() for s in sample_row.split(",")]))
+                    discovered_datasets.append({
+                        "path": str(p),
+                        "columns": cols[:30],  # 限制列数
+                        "sample": sample
+                    })
+                except Exception:
+                    continue
+
+            if discovered_datasets:
+                tm = TemplateManager(client, cache_path=Path("templates/dynamic_templates.json"))
+                dynamic_template = await tm.generate_template(cfg.question, discovered_datasets)
+
+                # 用dynamic template的结果更新features和join_keys
+                if dynamic_template.feature_sets:
+                    feats = list(dynamic_template.feature_sets[0])
+                if dynamic_template.join_keys:
+                    tpl_join = list(dynamic_template.join_keys)
+                if dynamic_template.canonical_order:
+                    canon = list(dynamic_template.canonical_order)
+
+                print(f"[DynamicTemplate] Generated template for domain: {dynamic_template.domain}")
+                print(f"[DynamicTemplate] Alias rules: {len(dynamic_template.alias_rules)} rules")
+
+                # 将dynamic_template存储供后续使用
+                domain = dynamic_template.domain
+        except Exception as e:
+            print(f"[DynamicTemplate] Failed to generate detailed template: {e}")
+
     tpl_join = await llm_refine_join_keys_with_headers(client, cfg.question, tpl_join, headers_union)
 
     JOIN_KEYS = tpl_join or ["id", "name", "title", "entity_id", "entity_name", "date", "player_name",
@@ -1330,6 +1507,7 @@ async def process(cfg: Config):
             def _hit(p: Path) -> bool:
                 name = p.name.lower()
                 return any(k in name for k in kws)
+
             filtered = [p for p in paths if _hit(p)]
             if filtered:
                 print(f"[SAFE] filter_by_query_keywords: {len(paths)} -> {len(filtered)} by {kws}")
@@ -1344,9 +1522,9 @@ async def process(cfg: Config):
     for p in paths[:20]:
         print("  -", p)
 
-    # 2) LLM 映射
+    # 2) LLM 映射（支持dynamic_template指导）
     results = await tqdm_asyncio.gather(
-        *[map_one_dataset(client, p, feats, cfg, policy) for p in paths],
+        *[map_one_dataset(client, p, feats, cfg, policy, dynamic_template) for p in paths],
         total=len(paths), desc="Mapping"
     )
 
@@ -1433,10 +1611,12 @@ async def process(cfg: Config):
 
         # （可选）将最相关的文件排到前面：文件名/列名是否包含主题词
         tk = _norm(topic_keyword) if topic_keyword else ""
+
         def _file_score(p: Path, df: pl.DataFrame) -> int:
             name_score = 2 if (tk and tk in _norm(p.name)) else 0
             head_score = 1 if (tk and any(tk in _norm(c) for c in df.columns)) else 0
             return name_score + head_score
+
         filtered_for_subset.sort(key=lambda x: _file_score(x[0], x[1]), reverse=True)
 
         subset_frames: list[pl.DataFrame] = []
@@ -1520,11 +1700,15 @@ async def process(cfg: Config):
             continue
 
         if not policy.require_strong_keys(join_cols):
-            print(f"[SAFE-JOIN-SKIP] {p.name}: weak join keys {join_cols} (need ≥{policy.join_min_keys}, strong={policy.strong_keys})")
+            print(
+                f"[SAFE-JOIN-SKIP] {p.name}: weak join keys {join_cols} (need ≥{policy.join_min_keys}, strong={policy.strong_keys})")
             continue
 
-        merged_safe = merged_safe.with_columns([pl.col(k).cast(pl.Utf8) for k in join_cols if k in merged_safe.columns]).unique(subset=join_cols, keep="first")
-        df = df.with_columns([pl.col(k).cast(pl.Utf8) for k in join_cols if k in df.columns]).unique(subset=join_cols, keep="first")
+        merged_safe = merged_safe.with_columns(
+            [pl.col(k).cast(pl.Utf8) for k in join_cols if k in merged_safe.columns]).unique(subset=join_cols,
+                                                                                             keep="first")
+        df = df.with_columns([pl.col(k).cast(pl.Utf8) for k in join_cols if k in df.columns]).unique(subset=join_cols,
+                                                                                                     keep="first")
 
         if not policy.blowup_guard(merged_safe, df, join_cols):
             print(f"[SAFE-JOIN-SKIP] {p.name}: potential blow-up on {join_cols} (>{policy.max_blowup_ratio}x)")
@@ -1560,7 +1744,8 @@ async def process(cfg: Config):
 
         non_updatable = set(pk_candidates)
         allowed_update_cols = [c for c in merged.columns if c not in non_updatable
-                               and merged.select(pl.col(c).is_null() | (pl.col(c).cast(pl.Utf8) == "")).to_series().any()]
+                               and merged.select(
+            pl.col(c).is_null() | (pl.col(c).cast(pl.Utf8) == "")).to_series().any()]
 
         sample_n = 300
         sample_df = merged.head(sample_n) if sample_n else merged
@@ -1576,7 +1761,8 @@ async def process(cfg: Config):
 
         if enrich_rows:
             def _row_key(r: dict) -> tuple:
-                return tuple(r.get(k, "") for k in pk_candidates) if pk_candidates else (hash(json.dumps(r, sort_keys=True)),)
+                return tuple(r.get(k, "") for k in pk_candidates) if pk_candidates else (
+                    hash(json.dumps(r, sort_keys=True)),)
 
             updates_map = {_row_key(r): r for r in enrich_rows}
 
@@ -1651,7 +1837,8 @@ async def process(cfg: Config):
 
             rep_cols = sorted({r["column"] for r in diffs}) if diffs else sorted(set(allowed_update_cols))
             changed_cnt = len({d["row_index"] for d in diffs}) if diffs else 0
-            print(f"[ENRICH] updated_rows={changed_cnt}/{len(sample_rows)} on cols={rep_cols[:8]}{'...' if len(rep_cols) > 8 else ''}")
+            print(
+                f"[ENRICH] updated_rows={changed_cnt}/{len(sample_rows)} on cols={rep_cols[:8]}{'...' if len(rep_cols) > 8 else ''}")
 
     except Exception as e:
         print("[WARN] ER/MVI skipped:", e)
@@ -1725,6 +1912,7 @@ async def process(cfg: Config):
     print(f"[OK] Meta -> {out.with_suffix('.meta.json')}")
     await client.aclose()
 
+
 # ===== LLM 文件相关性判定（通用、跨领域）=====
 _RELEVANCE_PROMPT = """
 You are a strict data curator. Given a user query and a dataset preview,
@@ -1740,12 +1928,13 @@ Rules:
 - Do NOT hallucinate columns that are not shown.
 """
 
+
 async def is_dataset_relevant_to_query(
-    client: LLMClient,
-    query: str,
-    file_name: str,
-    headers: list[str],
-    sample_rows: list[dict],
+        client: LLMClient,
+        query: str,
+        file_name: str,
+        headers: list[str],
+        sample_rows: list[dict],
 ) -> bool:
     try:
         msg = [
@@ -1763,6 +1952,7 @@ async def is_dataset_relevant_to_query(
     except Exception:
         # 任何异常一律判为不相关，防止脏数据混入
         return False
+
 
 # ============================== Loader & Main ==========================
 def load_config(path: Optional[str] = None) -> Config:
@@ -1789,6 +1979,7 @@ def load_config(path: Optional[str] = None) -> Config:
     allowed = Config.__annotations__.keys()
     data = {k: v for k, v in data.items() if k in allowed}
     return Config(**data)
+
 
 if __name__ == "__main__":
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else None
