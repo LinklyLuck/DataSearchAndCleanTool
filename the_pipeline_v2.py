@@ -1551,7 +1551,7 @@ async def process(cfg: Config):
         auto_domain = await detect_domain_from_query_or_columns(
             cfg.question, list(merged.columns), llm_client=client
         )
-        provider = get_provider_for_auto_domain(auto_domain)
+        provider = get_provider_for_auto_domain(auto_domain, llm_client=client)
         print(f"[ENRICH] provider={provider.name}, domain={auto_domain}")
 
         pk_candidates = [k for k in JOIN_KEYS if k in merged.columns]
