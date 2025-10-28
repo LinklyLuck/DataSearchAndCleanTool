@@ -157,11 +157,25 @@ def _expand_globs_mixed(patterns: List[str]) -> List[Path]:
     return _expand_globs(new_patterns)
 
 
-# === 外部增强：仅"就地补全"，不新增行/列 ===
-from enrichment_providers import (
+# === 外部增强：ER（实体解析）+ MVI（缺失值填补）分离 ===
+# ER: 使用 er_providers (LLM驱动)
+from er_providers import (
     get_provider_for_auto_domain,
     detect_domain_from_query_or_columns,
 )
+
+# MVI: 使用 mvi_providers (外部API驱动)
+try:
+    from mvi_providers import (
+
+        get_mvi_provider_for_domain,
+        detect_domain_from_columns
+    )
+
+    _HAS_MVI_PROVIDERS = True
+except ImportError:
+    _HAS_MVI_PROVIDERS = False
+    print("[INFO] mvi_providers not found, MVI will be skipped")
 
 try:
     import yaml  # optional for .yaml config
@@ -1728,120 +1742,203 @@ async def process(cfg: Config):
         u_stats = {"error": str(e)}
         merged = merged_safe
 
-    # 4.5) ER/MVI（就地补全，不新增行/列；不变）
+    # ====================================================================
+    # 4.5) 两阶段增强：ER（实体解析）+ MVI（缺失值填补）
+    # ====================================================================
     entity_report_path = None
     enrich_summary_path = None
-    try:
-        auto_domain = await detect_domain_from_query_or_columns(
-            cfg.question, list(merged.columns), llm_client=client
-        )
-        provider = get_provider_for_auto_domain(auto_domain, llm_client=client)
-        print(f"[ENRICH] provider={provider.name}, domain={auto_domain}")
+    er_report_path = None
 
-        pk_candidates = [k for k in JOIN_KEYS if k in merged.columns]
-        if not pk_candidates:
-            pk_candidates = [c for c in merged.columns if merged.schema[c] == pl.Utf8][:2]
+    # 识别领域
+    auto_domain = await detect_domain_from_query_or_columns(
+        cfg.question, list(merged.columns), llm_client=client
+    )
+    print(f"[DOMAIN] Detected: {auto_domain}")
 
-        non_updatable = set(pk_candidates)
-        allowed_update_cols = [c for c in merged.columns if c not in non_updatable
-                               and merged.select(
-            pl.col(c).is_null() | (pl.col(c).cast(pl.Utf8) == "")).to_series().any()]
+    # 确定主键
+    pk_candidates = [k for k in JOIN_KEYS if k in merged.columns]
+    if not pk_candidates:
+        pk_candidates = [c for c in merged.columns if merged.schema[c] == pl.Utf8][:2]
+    print(f"[PRIMARY_KEYS] {pk_candidates}")
 
-        sample_n = 300
-        sample_df = merged.head(sample_n) if sample_n else merged
-        sample_rows = sample_df.to_dicts()
+    # 确定可更新列（有缺失值的列）
+    non_updatable = set(pk_candidates)
+    allowed_update_cols = [c for c in merged.columns if c not in non_updatable
+                           and merged.select(
+        pl.col(c).is_null() | (pl.col(c).cast(pl.Utf8) == "")).to_series().any()]
+    print(f"[UPDATABLE_COLS] {len(allowed_update_cols)} columns with missing values")
 
-        enrich_rows = await provider.enrich_rows(
-            rows=sample_rows,
-            primary_keys=pk_candidates,
-            allowed_update_cols=allowed_update_cols,
-            enrich_only=True,
-            no_title_change=True
-        )
+    # 采样（避免成本过高）
+    sample_n = int(os.getenv("ER_MVI_SAMPLE_ROWS", "300"))
+    sample_df = merged.head(sample_n) if sample_n else merged
+    sample_rows = sample_df.to_dicts()
 
-        if enrich_rows:
-            def _row_key(r: dict) -> tuple:
-                return tuple(r.get(k, "") for k in pk_candidates) if pk_candidates else (
-                    hash(json.dumps(r, sort_keys=True)),)
+    # ====================================================================
+    # 阶段1: ER (Entity Resolution) - LLM驱动
+    # ====================================================================
+    er_enabled = os.getenv("ER_ENABLED", "1") == "1"
 
-            updates_map = {_row_key(r): r for r in enrich_rows}
+    if er_enabled:
+        try:
+            print(f"\n[ER] Starting Entity Resolution...")
+            er_provider = get_provider_for_auto_domain(auto_domain, llm_client=client)
+            print(f"[ER] Provider: {er_provider.name}")
 
-            def _apply_row(i, r):
-                k = _row_key(r)
-                upd = updates_map.get(k, {})
-                out = dict(r)
+            # 执行ER
+            resolved_rows, er_report = await er_provider.resolve_entities(
+                rows=sample_rows,
+                primary_keys=pk_candidates,
+                entity_type=auto_domain,
+                max_comparisons=500,
+                confidence_threshold=0.75
+            )
+
+            if resolved_rows and len(resolved_rows) < len(sample_rows):
+                print(f"[ER] ✓ Merged {len(sample_rows)} → {len(resolved_rows)} rows")
+                sample_rows = resolved_rows
+
+                # 保存ER报告
+                if er_report:
+                    er_path = Path(cfg.out).with_name(Path(cfg.out).stem + "_er_report.csv")
+                    pl.from_dicts(er_report).write_csv(er_path)
+                    er_report_path = str(er_path)
+                    print(f"[ER] Report -> {er_path}")
+            else:
+                print(f"[ER] No duplicates found")
+
+        except Exception as e:
+            print(f"[WARN] ER failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # ====================================================================
+    # 阶段2: MVI (Missing Value Imputation) - 外部API驱动
+    # ====================================================================
+    mvi_enabled = os.getenv("MVI_ENABLED", "1") == "1" and _HAS_MVI_PROVIDERS
+
+    if mvi_enabled:
+        try:
+            print(f"\n[MVI] Starting Missing Value Imputation...")
+
+            # 收集API密钥
+            api_keys = {
+                "tmdb": os.getenv("TMDB_API_KEY"),
+                "omdb": os.getenv("OMDB_API_KEY"),
+                "kaggle_username": os.getenv("KAGGLE_USERNAME"),
+                "kaggle_key": os.getenv("KAGGLE_KEY"),
+            }
+
+            # 过滤掉空的API key
+            api_keys = {k: v for k, v in api_keys.items() if v}
+
+            if api_keys:
+                print(f"[MVI] Available APIs: {list(api_keys.keys())}")
+            else:
+                print(f"[MVI] No API keys found, using Wikipedia only")
+
+            # 获取MVI provider
+            mvi_provider = get_mvi_provider_for_domain(
+                domain=auto_domain,
+                api_keys=api_keys
+            )
+            print(f"[MVI] Provider: {mvi_provider.name}")
+
+            # 执行MVI
+            enriched_rows = await mvi_provider.impute_missing(
+                rows=sample_rows,
+                primary_keys=pk_candidates,
+                allowed_update_cols=allowed_update_cols
+            )
+
+            # 关闭provider
+            await mvi_provider.aclose()
+
+            if enriched_rows:
+                # 生成before/after对比
+                def _row_key(r: dict) -> tuple:
+                    return tuple(r.get(k, "") for k in pk_candidates) if pk_candidates else (
+                        hash(json.dumps(r, sort_keys=True)),)
+
+                updates_map = {_row_key(r): r for r in enriched_rows}
+
+                def _apply_row(i, r):
+                    k = _row_key(r)
+                    upd = updates_map.get(k, {})
+                    out = dict(r)
+                    for c in allowed_update_cols:
+                        if c in upd:
+                            v0 = r.get(c, None)
+                            v1 = upd.get(c, None)
+                            if (v0 is None or str(v0).strip() == "") and v1 not in (None, ""):
+                                out[c] = v1
+                    return out
+
+                sample_rows_updated = [_apply_row(i, r) for i, r in enumerate(sample_rows)]
+
+                # entity_report.csv (MVI changes)
+                diffs = []
+                for i in range(len(sample_rows)):
+                    before = sample_rows[i]
+                    after = sample_rows_updated[i]
+                    for c in allowed_update_cols:
+                        b = before.get(c, None)
+                        a = after.get(c, None)
+                        if (b in (None, "")) and (a not in (None, "")):
+                            rec = {"row_index": i}
+                            for k in pk_candidates:
+                                rec[k] = after.get(k, "")
+                            rec.update({"column": c, "before": b, "after": a})
+                            diffs.append(rec)
+
+                if diffs:
+                    mvi_path = Path(cfg.out).with_name(Path(cfg.out).stem + "_mvi_report.csv")
+                    base_keys = ["row_index"] + pk_candidates + ["column", "before", "after"]
+                    with mvi_path.open("w", encoding="utf-8", newline="") as f:
+                        writer = csv.DictWriter(f, fieldnames=base_keys)
+                        writer.writeheader()
+                        for d in diffs:
+                            writer.writerow({k: d.get(k, "") for k in base_keys})
+                    entity_report_path = str(mvi_path)
+                    print(f"[MVI] Changes -> {mvi_path} (rows={len(diffs)})")
+
+                # enrich_summary.csv
+                col_summary = []
+                n = len(sample_rows)
                 for c in allowed_update_cols:
-                    if c in upd:
-                        v0 = r.get(c, None)
-                        v1 = upd.get(c, None)
-                        if (v0 is None or str(v0).strip() == "") and v1 not in (None, ""):
-                            out[c] = v1
-                return out
+                    filled = sum(
+                        (sample_rows[i].get(c, None) in (None, "")) and
+                        (sample_rows_updated[i].get(c, None) not in (None, ""))
+                        for i in range(n)
+                    )
+                    if filled > 0:
+                        col_summary.append({
+                            "column": c,
+                            "filled_cells": filled,
+                            "sample_size": n,
+                            "filled_ratio": round(filled / max(1, n), 4)
+                        })
+                if col_summary:
+                    sum_path = Path(cfg.out).with_name(Path(cfg.out).stem + "_enrich_summary.csv")
+                    with sum_path.open("w", encoding="utf-8", newline="") as f:
+                        writer = csv.DictWriter(f, fieldnames=["column", "filled_cells", "sample_size", "filled_ratio"])
+                        writer.writeheader()
+                        for r in col_summary:
+                            writer.writerow(r)
+                    enrich_summary_path = str(sum_path)
+                    print(f"[MVI] Summary -> {sum_path} (cols={len(col_summary)})")
 
-            sample_rows_updated = [_apply_row(i, r) for i, r in enumerate(sample_rows)]
+                # 写回补全后的样本
+                merged = pl.from_dicts(sample_rows_updated + merged.slice(len(sample_rows_updated)).to_dicts())
 
-            # entity_report.csv
-            diffs = []
-            for i in range(len(sample_rows)):
-                before = sample_rows[i]
-                after = sample_rows_updated[i]
-                for c in allowed_update_cols:
-                    b = before.get(c, None)
-                    a = after.get(c, None)
-                    if (b in (None, "")) and (a not in (None, "")):
-                        rec = {"row_index": i}
-                        for k in pk_candidates:
-                            rec[k] = after.get(k, "")
-                        rec.update({"column": c, "before": b, "after": a})
-                        diffs.append(rec)
+                rep_cols = sorted({r["column"] for r in diffs}) if diffs else sorted(set(allowed_update_cols))
+                changed_cnt = len({d["row_index"] for d in diffs}) if diffs else 0
+                print(
+                    f"[MVI] ✓ Updated {changed_cnt}/{len(sample_rows)} rows on cols={rep_cols[:8]}{'...' if len(rep_cols) > 8 else ''}")
 
-            if diffs:
-                er_path = Path(cfg.out).with_name(Path(cfg.out).stem + "_entity_report.csv")
-                base_keys = ["row_index"] + pk_candidates + ["column", "before", "after"]
-                with er_path.open("w", encoding="utf-8", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=base_keys)
-                    writer.writeheader()
-                    for d in diffs:
-                        writer.writerow({k: d.get(k, "") for k in base_keys})
-                entity_report_path = str(er_path)
-                print(f"[ENRICH] entity report -> {er_path} (rows={len(diffs)})")
-
-            # enrich_summary.csv
-            col_summary = []
-            n = len(sample_rows)
-            for c in allowed_update_cols:
-                filled = sum(
-                    (sample_rows[i].get(c, None) in (None, "")) and
-                    (sample_rows_updated[i].get(c, None) not in (None, ""))
-                    for i in range(n)
-                )
-                if filled > 0:
-                    col_summary.append({
-                        "column": c,
-                        "filled_cells": filled,
-                        "sample_size": n,
-                        "filled_ratio": round(filled / max(1, n), 4)
-                    })
-            if col_summary:
-                sum_path = Path(cfg.out).with_name(Path(cfg.out).stem + "_enrich_summary.csv")
-                with sum_path.open("w", encoding="utf-8", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=["column", "filled_cells", "sample_size", "filled_ratio"])
-                    writer.writeheader()
-                    for r in col_summary:
-                        writer.writerow(r)
-                enrich_summary_path = str(sum_path)
-                print(f"[ENRICH] enrich summary -> {sum_path} (cols={len(col_summary)})")
-
-            # 写回补全后的样本
-            merged = pl.from_dicts(sample_rows_updated + merged.slice(len(sample_rows_updated)).to_dicts())
-
-            rep_cols = sorted({r["column"] for r in diffs}) if diffs else sorted(set(allowed_update_cols))
-            changed_cnt = len({d["row_index"] for d in diffs}) if diffs else 0
-            print(
-                f"[ENRICH] updated_rows={changed_cnt}/{len(sample_rows)} on cols={rep_cols[:8]}{'...' if len(rep_cols) > 8 else ''}")
-
-    except Exception as e:
-        print("[WARN] ER/MVI skipped:", e)
+        except Exception as e:
+            print(f"[WARN] MVI failed: {e}")
+            import traceback
+            traceback.print_exc()
 
     # >>> 导出点名列并集副产物（如有） <<<
     if REQUESTED_COLS and requested_subset_df is not None:

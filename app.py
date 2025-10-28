@@ -5,7 +5,7 @@ import streamlit as st
 from subprocess import CalledProcessError
 
 ROOT = Path(__file__).parent.resolve()
-PIPELINE = ROOT / "the_pipeline_v2.py"        # 你的现有脚本
+PIPELINE = ROOT / "the_pipeline_v2.py"  # 你的现有脚本
 VALIDATOR = ROOT / "validate_output_dataset.py"
 DEFAULT_DATAS_GLOB = "datalake/*.{csv,json,ndjson,jsonl,xlsx,xls}"
 RESULTS_DIR = ROOT / "results_webui"
@@ -17,8 +17,9 @@ st.title("🧠 DataSearchTool – 自然语言找数 · 自动合并 · ER/MVI �
 # ---------------------- Sidebar: 基础配置 ----------------------
 st.sidebar.header("⚙️ 基础配置")
 api_base = st.sidebar.text_input("LLM API Base URL", value="https://goapi.gptnb.ai/v1/chat/completions")
-api_key  = st.sidebar.text_input("LLM API Key（优先用环境变量 GPTNB_API_KEY）", type="password", value=os.getenv("GPTNB_API_KEY", ""))
-model    = st.sidebar.text_input("模型名（left/map/join 共用）", value="gpt-4o-mini")
+api_key = st.sidebar.text_input("LLM API Key（优先用环境变量 GPTNB_API_KEY）", type="password",
+                                value=os.getenv("GPTNB_API_KEY", ""))
+model = st.sidebar.text_input("模型名（left/map/join 共用）", value="gpt-4o-mini")
 max_conc = st.sidebar.number_input("max_concurrency", 1, 16, 4)
 graph_out = st.sidebar.checkbox("导出 join graph（.dot）（若脚本支持）", value=False)
 
@@ -26,14 +27,17 @@ graph_out = st.sidebar.checkbox("导出 join graph（.dot）（若脚本支持�
 st.sidebar.header("🔐 外部 API 增强（可选）")
 st.sidebar.caption("这些密钥将注入到子进程环境变量，ER/MVI 会自动按领域/数据选择合适的外部源。")
 k_user = st.sidebar.text_input("Kaggle Username（KAGGLE_USERNAME）", value=os.getenv("KAGGLE_USERNAME", ""))
-k_key  = st.sidebar.text_input("Kaggle API Key（KAGGLE_KEY）", type="password", value=os.getenv("KAGGLE_KEY", ""))
+k_key = st.sidebar.text_input("Kaggle API Key（KAGGLE_KEY）", type="password", value=os.getenv("KAGGLE_KEY", ""))
 omdb_key = st.sidebar.text_input("OMDb API Key（OMDB_API_KEY）", type="password", value=os.getenv("OMDB_API_KEY", ""))
 tmdb_key = st.sidebar.text_input("TMDb API Key（TMDB_API_KEY）", type="password", value=os.getenv("TMDB_API_KEY", ""))
 
 st.sidebar.divider()
 st.sidebar.header("🧩 ER / MVI 选项")
-enable_er_mvi = st.sidebar.checkbox("启用 ER/MVI（自动域识别 + Wikipedia/Kaggle/…）", value=True)
-er_sample_rows = st.sidebar.slider("ER/MVI 抽样行数（避免外部请求过大）", min_value=50, max_value=1000, value=200, step=50)
+st.sidebar.caption("ER=实体解析（LLM驱动）；MVI=缺失值填补（外部API驱动）")
+enable_er = st.sidebar.checkbox("启用 ER（实体解析 - 合并重复实体）", value=True)
+enable_mvi = st.sidebar.checkbox("启用 MVI（缺失值填补 - Wikipedia/TMDb/OMDb/Kaggle）", value=True)
+er_sample_rows = st.sidebar.slider("ER/MVI 抽样行数（避免外部请求过大）", min_value=50, max_value=1000, value=200,
+                                   step=50)
 st.sidebar.caption("👉 未配置密钥时会仅使用无需密钥的源（例如 Wikipedia），或跳过该源。")
 
 # ---------------------- Queries 输入 ----------------------
@@ -63,7 +67,8 @@ queries = [q for q in queries if q]
 
 # ---------------------- 上传数据（可选） ----------------------
 st.subheader("📂 上传数据（可选）")
-st.caption("可选；也可以直接用磁盘上的 `datalake/*.{csv,json,ndjson,jsonl,xlsx,xls}`。上传文件将保存到 `datas/` 参与抓取。")
+st.caption(
+    "可选；也可以直接用磁盘上的 `datalake/*.{csv,json,ndjson,jsonl,xlsx,xls}`。上传文件将保存到 `datas/` 参与抓取。")
 uploads = st.file_uploader(
     "拖入多个 CSV/JSON/NDJSON/JSONL/Excel",
     type=["csv", "json", "ndjson", "jsonl", "xlsx", "xls"],
@@ -80,9 +85,11 @@ if uploads:
 run = st.button("🚀 开始运行", type="primary", disabled=(len(queries) == 0))
 log_container = st.container()
 
+
 def make_slug(idx: int, question: str) -> str:
     base = ''.join(ch if ch.isalnum() else '_' for ch in question.lower())[:40] or 'q'
     return f"q{idx}_{base}"
+
 
 def run_one_query(idx: int, question: str) -> dict:
     """
@@ -90,7 +97,7 @@ def run_one_query(idx: int, question: str) -> dict:
     """
     slug = make_slug(idx, question)
     cfg_path = RESULTS_DIR / f"{slug}.json"
-    out_csv  = RESULTS_DIR / f"{slug}_merged.csv"
+    out_csv = RESULTS_DIR / f"{slug}_merged.csv"
     dot_path = RESULTS_DIR / f"{slug}_graph.dot" if graph_out else ""
     meta_path = out_csv.with_suffix(".meta.json")
 
@@ -112,7 +119,6 @@ def run_one_query(idx: int, question: str) -> dict:
         "api_base": api_base,
         "api_key": api_key or os.getenv("GPTNB_API_KEY", ""),
         "er_mvi_sample_rows": int(er_sample_rows),
-        "enable_er_mvi": bool(enable_er_mvi),
     }
     cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -124,7 +130,10 @@ def run_one_query(idx: int, question: str) -> dict:
     if k_key:  env_for_child["KAGGLE_KEY"] = k_key
     if omdb_key: env_for_child["OMDB_API_KEY"] = omdb_key
     if tmdb_key: env_for_child["TMDB_API_KEY"] = tmdb_key
-    env_for_child["ER_MVI_ENABLED"] = "1" if enable_er_mvi else "0"
+
+    # 独立的ER和MVI开关
+    env_for_child["ER_ENABLED"] = "1" if enable_er else "0"
+    env_for_child["MVI_ENABLED"] = "1" if enable_mvi else "0"
     env_for_child["ER_MVI_SAMPLE_ROWS"] = str(er_sample_rows)
 
     # 运行主管道
@@ -210,7 +219,6 @@ def run_one_query(idx: int, question: str) -> dict:
     return summary
 
 
-
 if run:
     st.toast(f"开始运行（共 {len(queries)} 条）", icon="✅")
     results = []
@@ -283,6 +291,7 @@ if run:
             if p.is_file():
                 zf.write(p, arcname=p.name)
     st.success("全部完成 🎉")
-    st.download_button("打包下载所有结果（ZIP）", data=buf.getvalue(), file_name="results_webui.zip", mime="application/zip")
+    st.download_button("打包下载所有结果（ZIP）", data=buf.getvalue(), file_name="results_webui.zip",
+                       mime="application/zip")
 else:
     st.info("填好问题后点击上面的 **开始运行**。")
