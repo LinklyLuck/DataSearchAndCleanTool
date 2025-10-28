@@ -1,0 +1,280 @@
+{
+  "query": "I need wine database with ph and quality",
+  "domain": "wine",
+  "rows": 1599,
+  "columns": [
+    "ph",
+    "quality"
+  ],
+  "matched_files": [
+    "E:\\DataSearchTool-main\\datalake\\all_seasons.xlsx",
+    "E:\\DataSearchTool-main\\datalake\\cat_breed.csv",
+    "E:\\DataSearchTool-main\\datalake\\cat_breed_details_245.csv",
+    "E:\\DataSearchTool-main\\datalake\\MBA_admission.csv",
+    "E:\\DataSearchTool-main\\datalake\\MBA_students_profile.csv",
+    "E:\\DataSearchTool-main\\datalake\\tmdb_5000_credits.csv",
+    "E:\\DataSearchTool-main\\datalake\\tmdb_5000_movies.csv",
+    "E:\\DataSearchTool-main\\datalake\\wine_acid_sugar.csv",
+    "E:\\DataSearchTool-main\\datalake\\wine_components.csv",
+    "E:\\DataSearchTool-main\\datalake\\wine_quality_red_327.csv",
+    "E:\\DataSearchTool-main\\datalake\\winequality_red_xxx.csv"
+  ],
+  "diagnostics": [
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\all_seasons.xlsx",
+      "rows_raw": 99,
+      "rows_mapped": 99,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null,
+      "columns_after_map": [
+        "player_name",
+        "team_abbreviation",
+        "age",
+        "player_height",
+        "player_weight",
+        "college",
+        "country",
+        "draft_year",
+        "draft_round",
+        "draft_number",
+        "gp",
+        "pts",
+        "reb",
+        "ast",
+        "net_rating",
+        "oreb_pct",
+        "dreb_pct",
+        "usg_pct",
+        "ts_pct",
+        "ast_pct",
+        "season",
+        "Unnamed: 0"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\cat_breed.csv",
+      "rows_raw": 1071,
+      "rows_mapped": 1071,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null,
+      "columns_after_map": [
+        "Breed",
+        "Age_in_years",
+        "Age_in_months",
+        "Gender",
+        "Neutered_or_spayed",
+        "Body_length",
+        "Weight",
+        "Fur_colour_dominant",
+        "Fur_pattern",
+        "Eye_colour",
+        "Allowed_outdoor",
+        "Preferred_food",
+        "Owner_play_time_minutes",
+        "Sleep_time_hours",
+        "Country",
+        "Latitude",
+        "Longitude"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\cat_breed_details_245.csv",
+      "rows_raw": 845,
+      "rows_mapped": 845,
+      "join_keys_used": [
+        "Breed"
+      ],
+      "rows_unique_on_keys": 3,
+      "columns_after_map": [
+        "Age_in_years",
+        "Fur_colour_dominant",
+        "Allowed_outdoor",
+        "Weight",
+        "Eye_colour",
+        "Breed",
+        "Body_length",
+        "Country",
+        "Sleep_time_hours",
+        "Neutered_or_spayed",
+        "Fur_pattern",
+        "Gender",
+        "Longitude"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\MBA_admission.csv",
+      "rows_raw": 6194,
+      "rows_mapped": 6194,
+      "join_keys_used": [
+        "application_id"
+      ],
+      "rows_unique_on_keys": 6194,
+      "columns_after_map": [
+        "gender",
+        "gpa",
+        "major",
+        "gmat",
+        "admission",
+        "application_id",
+        "international"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\MBA_students_profile.csv",
+      "rows_raw": 6194,
+      "rows_mapped": 6194,
+      "join_keys_used": [
+        "application_id"
+      ],
+      "rows_unique_on_keys": 6194,
+      "columns_after_map": [
+        "quality",
+        "application_id",
+        "work_exp",
+        "work_industry"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\tmdb_5000_credits.csv",
+      "rows_raw": 4803,
+      "rows_mapped": 4803,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null,
+      "columns_after_map": [
+        "movie_id",
+        "title",
+        "cast",
+        "crew"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\tmdb_5000_movies.csv",
+      "rows_raw": 4803,
+      "rows_mapped": 4803,
+      "join_keys_used": [],
+      "rows_unique_on_keys": null,
+      "columns_after_map": [
+        "budget",
+        "genres",
+        "homepage",
+        "id",
+        "keywords",
+        "original_language",
+        "original_title",
+        "overview",
+        "popularity",
+        "production_companies",
+        "production_countries",
+        "release_date",
+        "revenue",
+        "runtime",
+        "spoken_languages",
+        "status",
+        "tagline",
+        "title",
+        "vote_average",
+        "vote_count"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\wine_acid_sugar.csv",
+      "rows_raw": 1599,
+      "rows_mapped": 1599,
+      "join_keys_used": [
+        "wine_id"
+      ],
+      "rows_unique_on_keys": 1597,
+      "columns_after_map": [
+        "wine_id",
+        "fixed acidity",
+        "volatile acidity",
+        "citric acid",
+        "residual sugar"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\wine_components.csv",
+      "rows_raw": 1599,
+      "rows_mapped": 1599,
+      "join_keys_used": [
+        "wine_id"
+      ],
+      "rows_unique_on_keys": 1597,
+      "columns_after_map": [
+        "wine_id",
+        "quality",
+        "chlorides",
+        "free sulfur dioxide",
+        "total sulfur dioxide",
+        "density",
+        "pH",
+        "sulphates",
+        "alcohol"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\wine_quality_red_327.csv",
+      "rows_raw": 1437,
+      "rows_mapped": 1437,
+      "join_keys_used": [
+        "quality"
+      ],
+      "rows_unique_on_keys": 6,
+      "columns_after_map": [
+        "quality",
+        "free sulfur dioxide",
+        "sulphates",
+        "volatile acidity",
+        "alcohol",
+        "fixed acidity"
+      ]
+    },
+    {
+      "file": "E:\\DataSearchTool-main\\datalake\\winequality_red_xxx.csv",
+      "rows_raw": 1461,
+      "rows_mapped": 1461,
+      "join_keys_used": [
+        "quality"
+      ],
+      "rows_unique_on_keys": 6,
+      "columns_after_map": [
+        "quality",
+        "residual sugar",
+        "sulphates",
+        "density",
+        "alcohol",
+        "free sulfur dioxide",
+        "total sulfur dioxide"
+      ]
+    }
+  ],
+  "join_keys": [
+    "wine_id",
+    "pH",
+    "quality"
+  ],
+  "merge_mode": "universal",
+  "safe_inner_snapshot": {
+    "rows": 1599,
+    "cols": 9,
+    "columns": [
+      "wine_id",
+      "quality",
+      "chlorides",
+      "free sulfur dioxide",
+      "total sulfur dioxide",
+      "density",
+      "pH",
+      "sulphates",
+      "alcohol"
+    ]
+  },
+  "universal_stats": {
+    "error": "datatypes of join keys don't match - `quality`: i64 on left does not match `quality`: str on right"
+  },
+  "requested_subset_csv": "E:\\DataSearchTool-main\\results_webui\\q1_i_need_wine_database_with_ph_and_quality_merged_requested_subset.csv",
+  "requested_columns": [
+    "ph",
+    "quality"
+  ]
+}

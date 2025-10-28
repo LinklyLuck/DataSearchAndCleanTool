@@ -1,0 +1,157 @@
+{
+  "f74235a2e4dd": {
+    "domain": "wine",
+    "keywords": [
+      "wine",
+      "pH level",
+      "wine quality",
+      "vineyard",
+      "wine type",
+      "vintners",
+      "acid content",
+      "wine tasting",
+      "wine color",
+      "wine aroma"
+    ],
+    "feature_sets": [
+      [
+        "wine_id",
+        "wine_name",
+        "ph",
+        "quality",
+        "vineyard",
+        "vintage_year",
+        "grape_variety",
+        "alcohol_content"
+      ],
+      [
+        "wine_id",
+        "ph",
+        "quality",
+        "producer",
+        "country_of_origin",
+        "wine_type",
+        "sugar_content"
+      ],
+      [
+        "wine_id",
+        "wine_region",
+        "ph",
+        "quality",
+        "tannin_level",
+        "acidity",
+        "flavor_profile"
+      ]
+    ],
+    "join_keys": [
+      "wine_id",
+      "vineyard"
+    ],
+    "canonical_order": [
+      "wine_id",
+      "wine_name",
+      "ph",
+      "quality",
+      "vineyard",
+      "vintage_year",
+      "grape_variety",
+      "wine_type",
+      "alcohol_content",
+      "sugar_content"
+    ],
+    "alias_rules": {
+      "^(ph|pH|pH_level)$": "ph",
+      "^(quality|wine_quality|rating)$": "quality",
+      "^(wine_id|id)$": "wine_id",
+      "^(wine_name|name|label)$": "wine_name",
+      "^(vineyard|producer|winery)$": "vineyard",
+      "^(wine_type|type|variety)$": "wine_type",
+      "^(vintage_year|year|harvest_year)$": "vintage_year",
+      "^(grape_variety|grapes)$": "grape_variety",
+      "^(alcohol_content|alcohol|alc)$": "alcohol_content",
+      "^(sugar_content|sugar)$": "sugar_content",
+      "^(wine_region|region|area)$": "wine_region",
+      "^(tannin_level|tannins)$": "tannin_level",
+      "^(acidity|acid_content)$": "acidity",
+      "^(flavor_profile|flavor|taste)$": "flavor_profile"
+    },
+    "policy": {
+      "strong_keys": [
+        "wine_id"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
+  },
+  "b53180e26d0c": {
+    "domain": "wine",
+    "keywords": [
+      "vineyard",
+      "grape",
+      "winery",
+      "vintage",
+      "terroir"
+    ],
+    "feature_sets": [
+      [
+        "wine_name",
+        "variety",
+        "winery",
+        "vintage",
+        "country",
+        "region"
+      ],
+      [
+        "wine_id",
+        "wine_name",
+        "grape_variety",
+        "alcohol_content",
+        "taste_profile",
+        "price"
+      ],
+      [
+        "producer",
+        "region",
+        "wine_style",
+        "aroma",
+        "bottle_size",
+        "food_pairing"
+      ]
+    ],
+    "join_keys": [
+      "wine_id",
+      "wine_name"
+    ],
+    "canonical_order": [
+      "wine_id",
+      "wine_name",
+      "variety",
+      "vintage",
+      "country",
+      "region",
+      "winery",
+      "price",
+      "taste_profile",
+      "wine_style",
+      "alcohol_content",
+      "food_pairing"
+    ],
+    "alias_rules": {
+      "^(wine_name|label|bottle_name)$": "wine_name",
+      "^(grape_variety|variety)$": "variety",
+      "^(year|vintage)$": "vintage",
+      "^(county|country)$": "country",
+      "^(winery|producer)$": "winery",
+      "^(region|appellation)$": "region"
+    },
+    "policy": {
+      "strong_keys": [
+        "wine_id"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
+  }
+}

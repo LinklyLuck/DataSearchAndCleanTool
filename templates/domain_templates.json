@@ -1,0 +1,56 @@
+{
+  "_meta": {
+    "version": 1
+  },
+  "fallback": {
+    "keywords": [],
+    "feature_sets": [
+      [
+        "target_variable",
+        "entity_name",
+        "entity_id",
+        "date",
+        "category",
+        "numeric_feature_1",
+        "numeric_feature_2",
+        "numeric_feature_3",
+        "text_feature",
+        "label_or_score"
+      ]
+    ],
+    "join_keys": [
+      "entity_id",
+      "entity_name",
+      "date"
+    ],
+    "canonical_order": [
+      "entity_name",
+      "entity_id",
+      "date",
+      "category",
+      "numeric_feature_1",
+      "numeric_feature_2",
+      "numeric_feature_3",
+      "text_feature",
+      "label_or_score"
+    ],
+    "policy": {
+      "strong_keys": [
+        "entity_id",
+        "entity_name"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "source_priority": [
+        ".csv",
+        ".ndjson",
+        ".jsonl",
+        ".json",
+        ".xlsx",
+        ".xls"
+      ],
+      "max_blowup_ratio": 1.8,
+      "alias_rules": {}
+    }
+  }
+}
