@@ -331,17 +331,22 @@ class LLMERProvider(ERProvider):
 def pick_entity_field(row: Dict[str, Any]) -> Optional[str]:
     """
     在一行数据里挑选"像实体名"的字段
-    """
-    candidates = [
-        "movie_title", "title", "name", "entity_name", "product_name",
-        "ticker", "director_name", "company", "brand", "player_name"
-    ]
-    for k in candidates:
-        if k in row and isinstance(row[k], str) and row[k].strip():
-            return k
 
-    # 兜底：第一个字符串列
-    for k, v in row.items():
-        if isinstance(v, str) and v.strip():
-            return k
+    策略：
+    1. 优先选择包含 "title", "name" 后缀的字段
+    2. 其次选择第一个字符串字段
+    """
+    # 策略1: 查找带有常见实体名称后缀的字段
+    for suffix in ["_title", "_name", "title", "name"]:
+        for key in row.keys():
+            if key.lower().endswith(suffix):
+                val = row[key]
+                if isinstance(val, str) and val.strip():
+                    return key
+
+    # 策略2: 兜底 - 返回第一个非空字符串字段
+    for key, val in row.items():
+        if isinstance(val, str) and val.strip():
+            return key
+
     return None
