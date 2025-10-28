@@ -9,14 +9,16 @@ LLM驱动的实体解析(ER)
 架构：
 - 使用 entity_tools.LLMEntityResolver 做 ER
 - 不再做 MVI（由 mvi_providers 负责）
+- 支持LLM自动判断领域（完全开放，不硬编码）
 """
 from __future__ import annotations
 from typing import List, Dict, Optional, Any
 import polars as pl
+import json
 
 
 # ============================================================================
-# 领域自动识别（保持原有接口兼容）
+# 领域自动识别（使用LLM，完全开放）
 # ============================================================================
 
 async def detect_domain_from_query_or_columns(
@@ -25,22 +27,24 @@ async def detect_domain_from_query_or_columns(
         llm_client=None
 ) -> str:
     """
-    自动识别数据领域 - 完全开放，不硬编码
+    自动识别数据领域 - 使用LLM判断，完全开放
 
-    策略：
+    策略（按优先级）：
     1. 从列名中提取实体类型（如 "movie_title" → "movie"）
-    2. 从query中提取关键词
+    2. 使用LLM分析列名和查询，推断领域
     3. 回退到"entity"（通用）
 
     Args:
         query: 用户查询
         columns: 数据集列名
-        llm_client: LLM客户端（可选，用于更精准识别）
+        llm_client: LLM客户端（用于智能判断）
 
     Returns:
         领域名称: 自动推断的实体类型（完全开放，不限于预设领域）
     """
-    # 方法1: 从列名提取（优先级最高）
+    # ========================================================================
+    # 方法1: 从列名提取（最快，优先级最高）
+    # ========================================================================
     for col in columns:
         col_lower = col.lower()
         # 常见实体类型后缀
@@ -51,37 +55,100 @@ async def detect_domain_from_query_or_columns(
                 # 去除常见的修饰词
                 entity_type = entity_type.replace("_", " ").strip()
                 if entity_type and len(entity_type) > 2:
+                    print(f"[DOMAIN] Detected from column name: {entity_type}")
                     return entity_type
 
-    # 方法2: 从query提取关键词
+    # ========================================================================
+    # 方法2: 使用LLM智能判断（完全开放，不限制领域）
+    # ========================================================================
+    if llm_client:
+        try:
+            llm_domain = await _llm_detect_domain(query, columns, llm_client)
+            if llm_domain and llm_domain != "unknown":
+                print(f"[DOMAIN] Detected by LLM: {llm_domain}")
+                return llm_domain
+        except Exception as e:
+            print(f"[WARN] LLM domain detection failed: {e}")
+            # 继续使用启发式方法
+
+    # ========================================================================
+    # 方法3: 从query提取关键词（简单启发式）
+    # ========================================================================
     if query:
         query_lower = query.lower()
-        # 提取第一个名词（简单启发式）
+        # 从query中提取第一个可能的实体类型词
         words = query_lower.split()
         for word in words:
-            if word in ["movie", "film", "stock", "product", "paper", "book",
-                        "patient", "customer", "user", "employee", "company",
-                        "restaurant", "hotel", "car", "house", "article"]:
-                return word
+            # 过滤掉常见的无关词
+            if word in ["the", "a", "an", "with", "for", "about", "find", "get", "show"]:
+                continue
+            # 如果是名词且长度合适，可能是实体类型
+            if len(word) > 3 and word.isalpha():
+                # 简单检查是否是复数形式
+                singular = word.rstrip('s') if word.endswith('s') else word
+                if len(singular) > 3:
+                    print(f"[DOMAIN] Detected from query: {singular}")
+                    return singular
 
-    # 方法3: 从列名中寻找主题词
-    cols_str = " ".join([c.lower() for c in columns])
-    # 常见主题词
-    topics = {
-        "movie": ["movie", "film", "director", "actor", "imdb"],
-        "stock": ["stock", "ticker", "equity", "price", "volume"],
-        "product": ["product", "sku", "order", "cart", "price"],
-        "paper": ["paper", "author", "conference", "journal", "citation"],
-        "patient": ["patient", "doctor", "hospital", "diagnosis", "treatment"],
-        "restaurant": ["restaurant", "cuisine", "menu", "chef", "rating"]
-    }
-
-    for topic, keywords in topics.items():
-        if any(k in cols_str for k in keywords):
-            return topic
-
-    # 回退：使用通用名称
+    # ========================================================================
+    # 方法4: 回退到通用实体
+    # ========================================================================
+    print(f"[DOMAIN] Using default: entity")
     return "entity"
+
+
+async def _llm_detect_domain(
+        query: str,
+        columns: List[str],
+        llm_client
+) -> Optional[str]:
+    """
+    使用LLM智能判断数据领域
+
+    Args:
+        query: 用户查询
+        columns: 列名列表
+        llm_client: LLM客户端
+
+    Returns:
+        领域名称（如 "movie", "stock", "music", "game" 等）
+    """
+    # 构建提示词
+    prompt = f"""Analyze the following information and determine the domain/entity type of this dataset.
+
+User Query: {query}
+
+Column Names: {', '.join(columns[:20])}  
+
+Task: Based on the query and column names, determine what type of entities this dataset contains.
+
+Requirements:
+1. Return a SINGLE WORD that best describes the entity type (e.g., "movie", "stock", "product", "person", "music", "game", "restaurant", "book", etc.)
+2. Be specific but concise
+3. Use singular form (e.g., "movie" not "movies")
+4. If you cannot determine the type, return "unknown"
+
+Response format: Just return the single word, nothing else.
+
+Domain:"""
+
+    try:
+        # 调用LLM
+        messages = [{"role": "user", "content": prompt}]
+        response = await llm_client.chat(messages, max_tokens=20, temperature=0)
+
+        # 提取领域名称
+        domain = response.strip().lower()
+
+        # 验证响应
+        if domain and len(domain) < 30 and domain.isalpha():
+            return domain
+        else:
+            return None
+
+    except Exception as e:
+        print(f"[WARN] LLM domain detection error: {e}")
+        return None
 
 
 def get_provider_for_auto_domain(domain: str, llm_client=None) -> "ERProvider":
@@ -89,13 +156,14 @@ def get_provider_for_auto_domain(domain: str, llm_client=None) -> "ERProvider":
     根据领域返回对应的ER Provider
 
     Args:
-        domain: 领域名称
+        domain: 领域名称（任意，不限制）
         llm_client: LLM客户端
 
     Returns:
         ERProvider实例（只做ER，不做MVI）
     """
-    # 现在所有领域都使用统一的LLM ER Provider
+    # 所有领域都使用统一的LLM ER Provider
+    # LLM足够智能，可以处理任何领域的实体解析
     return LLMERProvider(llm_client=llm_client)
 
 
@@ -137,6 +205,7 @@ class LLMERProvider(ERProvider):
 
     功能：
     - 使用LLM判断重复实体并合并
+    - 支持任意领域（不限制）
     - 不做MVI（由 mvi_providers 负责）
     """
     name = "LLM-ER"
@@ -191,12 +260,12 @@ class LLMERProvider(ERProvider):
             # 1. 转换为Polars DataFrame
             df = pl.from_dicts(rows)
 
-            # 2. 识别实体类型（用于LLM理解）
+            # 2. 如果entity_type是generic的，尝试从数据推断
             if not entity_type or entity_type == "entity":
                 entity_type = self._guess_entity_type(df.columns, primary_keys)
 
             # 3. 执行ER（实体解析 - 合并重复实体）
-            print(f"[LLM-ER] Running entity resolution for {entity_type}...")
+            print(f"[LLM-ER] Running entity resolution for '{entity_type}' entities...")
 
             resolved_df, report_df = await self._resolver.resolve(
                 df=df,
@@ -206,7 +275,7 @@ class LLMERProvider(ERProvider):
             )
 
             if len(resolved_df) < len(df):
-                print(f"[LLM-ER] Merged {len(df)} → {len(resolved_df)} rows")
+                print(f"[LLM-ER] ✓ Merged {len(df)} → {len(resolved_df)} rows")
 
             # 4. 转回Dict
             resolved_rows = resolved_df.to_dicts()
@@ -222,7 +291,7 @@ class LLMERProvider(ERProvider):
 
     def _guess_entity_type(self, columns: List[str], primary_keys: List[str]) -> str:
         """
-        根据列名和主键猜测实体类型 - 完全开放，不硬编码
+        根据列名和主键猜测实体类型（不使用硬编码列表）
 
         策略：
         1. 优先从主键名提取（movie_title → movie）
@@ -250,26 +319,6 @@ class LLMERProvider(ERProvider):
                     entity_type = col_lower.split(suffix)[0].replace("_", " ").strip()
                     if entity_type and len(entity_type) > 2:
                         return entity_type
-
-        # 方法3: 智能猜测（启发式，但开放式）
-        cols_str = " ".join([c.lower() for c in columns])
-
-        # 这里保留一些常见类型的识别，但作为启发式，不是限制
-        common_patterns = {
-            "movie": ["movie", "film", "director", "imdb", "runtime", "genre"],
-            "stock": ["ticker", "ohlc", "close", "open", "volume", "exchange"],
-            "product": ["sku", "price", "quantity", "cart", "order"],
-            "paper": ["author", "conference", "journal", "citation", "abstract"],
-            "patient": ["patient", "diagnosis", "treatment", "hospital"],
-            "athlete": ["player", "team", "sport", "game", "score"],
-            "restaurant": ["restaurant", "cuisine", "menu", "chef"],
-            "book": ["book", "author", "publisher", "isbn"],
-            "company": ["company", "ceo", "revenue", "employees", "industry"]
-        }
-
-        for entity_type, keywords in common_patterns.items():
-            if any(k in cols_str for k in keywords):
-                return entity_type
 
         # 回退：通用实体
         return "entity"
