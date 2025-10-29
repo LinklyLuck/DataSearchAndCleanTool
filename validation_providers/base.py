@@ -71,6 +71,7 @@ class ValidationProvider:
         self.sem = asyncio.Semaphore(max_concurrency)
         self.client = httpx.AsyncClient(timeout=timeout)
         self._cache = {}
+        self.llm_client = llm_client
 
     async def aclose(self):
         """关闭HTTP客户端"""

@@ -240,32 +240,70 @@ class WikipediaValidationProvider(ValidationProvider):
         if not combined:
             return None
 
-            # 优先使用LLM做判断
-            if getattr(self, "llm_client", None) is not None:
-                prompt = (
-                    "You are a data quality analyst. Based on the description below, "
-                    "identify the most concise high-level category or type for the entity. "
-                    "Return STRICT JSON with schema {\"category\": string|null}. "
-                    "Use lowercase words separated by spaces or hyphen, avoid extra commentary. "
-                    "If you are unsure, return null.\n\n"
-                    f"Entity: {entity_name}\n"
-                    f"Description: {description or 'N/A'}\n"
-                    f"Summary: {extract_text or 'N/A'}"
-                )
-                try:
-                    response = await self.llm_client.chat("gpt-4o-mini", [
-                        {"role": "user", "content": prompt}
-                    ])
-                    data = json.loads(response.strip())
-                    category = data.get("category") if isinstance(data, dict) else None
-                    if category:
-                        return str(category).strip()
-                except Exception:
-                    pass
+        # 优先使用LLM做判断
+        if getattr(self, "llm_client", None) is not None:
+            prompt = (
+                "You are a data quality analyst. Based on the description below, "
+                "identify the most concise high-level category or type for the entity. "
+                "Return STRICT JSON with schema {\"category\": string|null}. "
+                "Use lowercase words separated by spaces or hyphen, avoid extra commentary. "
+                "If you are unsure, return null.\n\n"
+                f"Entity: {entity_name}\n"
+                f"Description: {description or 'N/A'}\n"
+                f"Summary: {extract_text or 'N/A'}"
+            )
+            try:
+                response = await self.llm_client.chat("gpt-4o-mini", [
+                    {"role": "user", "content": prompt}
+                ])
+                data = self._parse_llm_json(response)
+                category = data.get("category") if isinstance(data, dict) else None
+                if category:
+                    return str(category).strip()
+            except Exception:
+                pass
 
-            # 回退到通用正则：提取 "is a ..." 片段
-            simple = self._simple_category(combined)
-            return simple
+        # 回退到通用正则：提取 "is a ..." 片段
+        simple = self._simple_category(combined)
+        return simple
+
+    def _parse_llm_json(self, text: str) -> Dict[str, Any]:
+        """尽可能宽松地解析LLM返回的JSON，允许带代码块或附加文本"""
+        if not text:
+            return {}
+
+        cleaned = text.strip()
+
+        # 直接尝试解析
+        try:
+            data = json.loads(cleaned)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+        # 尝试从代码块中提取
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, flags=re.DOTALL)
+        if fenced:
+            try:
+                data = json.loads(fenced.group(1))
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+        # 尝试提取第一个JSON对象
+        fallback = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if fallback:
+            try:
+                data = json.loads(fallback.group(0))
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+        return {}
+
 
     def _simple_category(self, text: str) -> Optional[str]:
         """使用通用语法模式提取类别"""

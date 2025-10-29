@@ -57,7 +57,7 @@ def get_validation_provider(
 
     if source == "wikipedia":
         # Wikipedia验证（最常用，无需API key）
-        return WikipediaValidationProvider()
+        return WikipediaValidationProvider(llm_client=llm_client)
 
     elif source == "tmdb":
         # TMDb验证（电影数据）
@@ -86,7 +86,7 @@ def get_validation_provider(
         providers = []
 
         # 始终包含Wikipedia（兜底）
-        providers.append(WikipediaValidationProvider())
+        providers.append(WikipediaValidationProvider(llm_client=llm_client))
 
         # 如果有TMDb key，加入TMDb
         if api_keys.get("tmdb"):
@@ -118,7 +118,8 @@ async def validate_data(
         primary_keys: list,
         source: str = "wikipedia",
         api_keys: dict = None,
-        validate_columns: list = None
+        validate_columns: list = None,
+        llm_client=None
 ):
     """
     便捷函数：一站式数据验证
@@ -153,7 +154,7 @@ async def validate_data(
         )
     """
     # 获取验证器
-    validator = get_validation_provider(source, api_keys)
+    validator = get_validation_provider(source, api_keys, llm_client=llm_client)
 
     try:
         # 执行验证
