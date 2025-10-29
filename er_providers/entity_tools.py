@@ -5,6 +5,8 @@ import polars as pl
 import asyncio
 import json
 from difflib import SequenceMatcher
+from pathlib import Path
+
 
 
 class LLMEntityResolver:
@@ -20,6 +22,9 @@ class LLMEntityResolver:
     def __init__(self, llm_client, cache=None):
         self.llm = llm_client
         self.cache = cache or {}
+        self.accepted_edges = []   # [(idx1, idx2, confidence)]
+        self.last_key_cols = []    # 记住本次ER识别到的关键列，供DOT标签用
+
 
     async def resolve(
             self,
