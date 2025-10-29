@@ -62,7 +62,8 @@ class ValidationProvider:
             self,
             timeout: int = 20,
             max_concurrency: int = 5,
-            api_key: Optional[str] = None
+            api_key: Optional[str] = None,
+            llm_client: Optional[Any] = None,
     ):
         self.timeout = timeout
         self.max_concurrency = max_concurrency

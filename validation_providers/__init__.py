@@ -36,7 +36,8 @@ __all__ = [
 
 def get_validation_provider(
         source: str = "wikipedia",
-        api_keys: dict = None
+        api_keys: dict = None,
+        llm_client=None,
 ) -> ValidationProvider:
     """
     获取数据验证Provider

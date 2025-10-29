@@ -5,6 +5,7 @@ Wikipedia Validation Provider
 使用Wikipedia作为权威数据源验证数据准确性
 """
 import re
+import json
 from typing import List, Dict, Optional, Any, Tuple
 import polars as pl
 from .base import ValidationProvider, ValidationReport
@@ -26,6 +27,10 @@ class WikipediaValidationProvider(ValidationProvider):
     """
 
     name = "Wikipedia"
+
+    def __init__(self, llm_client=None, **kwargs):
+        super().__init__(llm_client=llm_client, **kwargs)
+
 
     async def validate(
             self,
@@ -120,7 +125,7 @@ class WikipediaValidationProvider(ValidationProvider):
                 return None
 
             # Step 3: 提取结构化信息
-            result = self._extract_fields(summary_data)
+            result = await self._extract_fields(entity_name, summary_data)
 
             # 缓存结果
             self._cache[cache_key] = result
@@ -167,9 +172,9 @@ class WikipediaValidationProvider(ValidationProvider):
         except:
             return None
 
-    def _extract_fields(self, summary_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _extract_fields(self, entity_name: str, summary_data: Dict[str, Any]) -> Dict[str, Any]:
         """从Wikipedia摘要提取结构化字段"""
-        result = {}
+        result: Dict[str, Any] = {}
 
         # 标题
         if "title" in summary_data:
@@ -191,9 +196,9 @@ class WikipediaValidationProvider(ValidationProvider):
             result["year"] = year
             result["release_year"] = year
 
-        # 提取类别
+        # 提取类别（优先使用LLM判断）
         description = summary_data.get("description", "")
-        category = self._extract_category(description)
+        category = await self._extract_category(entity_name, description, summary_data.get("extract", ""))
         if category:
             result["category"] = category
             result["type"] = category
@@ -224,31 +229,59 @@ class WikipediaValidationProvider(ValidationProvider):
 
         return None
 
-    def _extract_category(self, description: str) -> Optional[str]:
-        """从description提取类别"""
-        if not description:
+    async def _extract_category(
+            self,
+            entity_name: str,
+            description: str,
+            extract_text: str
+    ) -> Optional[str]:
+        """使用LLM（可选）或通用规则提取类别/类型"""
+        combined = " ".join([description or "", extract_text or ""]).strip()
+        if not combined:
             return None
 
-        desc_lower = description.lower()
+            # 优先使用LLM做判断
+            if getattr(self, "llm_client", None) is not None:
+                prompt = (
+                    "You are a data quality analyst. Based on the description below, "
+                    "identify the most concise high-level category or type for the entity. "
+                    "Return STRICT JSON with schema {\"category\": string|null}. "
+                    "Use lowercase words separated by spaces or hyphen, avoid extra commentary. "
+                    "If you are unsure, return null.\n\n"
+                    f"Entity: {entity_name}\n"
+                    f"Description: {description or 'N/A'}\n"
+                    f"Summary: {extract_text or 'N/A'}"
+                )
+                try:
+                    response = await self.llm_client.chat("gpt-4o-mini", [
+                        {"role": "user", "content": prompt}
+                    ])
+                    data = json.loads(response.strip())
+                    category = data.get("category") if isinstance(data, dict) else None
+                    if category:
+                        return str(category).strip()
+                except Exception:
+                    pass
 
-        category_patterns = {
-            "action": ["action"],
-            "comedy": ["comedy"],
-            "drama": ["drama"],
-            "thriller": ["thriller"],
-            "horror": ["horror"],
-            "romance": ["romance"],
-            "sci-fi": ["science fiction", "sci-fi", "scifi"],
-            "documentary": ["documentary"],
-            "animation": ["animated", "animation"],
-            "company": ["company", "corporation", "firm"],
-            "movie": ["film", "movie"],
-            "series": ["television series", "tv series", "series"],
-        }
+            # 回退到通用正则：提取 "is a ..." 片段
+            simple = self._simple_category(combined)
+            return simple
 
-        for category, keywords in category_patterns.items():
-            if any(kw in desc_lower for kw in keywords):
-                return category
+    def _simple_category(self, text: str) -> Optional[str]:
+        """使用通用语法模式提取类别"""
+        patterns = [
+            r"\bis a[n]?\s+([a-zA-Z][a-zA-Z0-9\-\s]{2,60})",
+            r"\bwas a[n]?\s+([a-zA-Z][a-zA-Z0-9\-\s]{2,60})",
+        ]
+        lowered = text.strip()
+        for pat in patterns:
+            match = re.search(pat, lowered, flags=re.IGNORECASE)
+            if match:
+                candidate = match.group(1).strip().lower()
+                # 清理尾部标点
+                candidate = re.sub(r"[^a-z0-9\-\s]$", "", candidate)
+                if candidate:
+                    return candidate
 
         return None
 
