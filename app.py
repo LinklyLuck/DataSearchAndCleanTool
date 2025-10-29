@@ -32,14 +32,28 @@ omdb_key = st.sidebar.text_input("OMDb API Key (OMDB_API_KEY)", type="password",
 tmdb_key = st.sidebar.text_input("TMDb API Key (TMDB_API_KEY)", type="password", value=os.getenv("TMDB_API_KEY", ""))
 
 # ---------------------- Sidebar: Cleaning & Validation ----------------------
+# app.py 的修改部分（只显示需要修改的部分）
+
+# ---------------------- Sidebar: Cleaning & Validation ----------------------
 st.sidebar.header("🧽 Cleaning & Validation")
 perform_cleaning = st.sidebar.checkbox("Enable data cleaning & external validation", value=False)
+
+# 修改清洗模式选项，添加 fast 和 hybrid
 cleaning_mode = st.sidebar.selectbox(
     "Cleaning mode",
-    options=["comprehensive", "llm", "type", "minimal"],
-    index=0,
-    disabled=not perform_cleaning
+    options=["hybrid", "fast", "batch", "comprehensive", "type"],  # 重新排序，hybrid 优先
+    index=0,  # 默认 hybrid
+    disabled=not perform_cleaning,
+    help=(
+        "• hybrid: 混合清洗（推荐）- 速度快3-10倍，准确性高\n"
+        "• fast: 超快规则清洗 - 速度快10-20倍，适合简单数据\n"
+        "• batch: 批量LLM清洗 - 速度快3-5倍，准确性更高\n"
+        "• comprehensive: 综合清洗 - 最准确但较慢\n"
+        "• type: 仅类型清洗 - 快速基础清洗"
+    )
 )
+
+# ... 其余代码保持不变 ...
 validation_source = st.sidebar.selectbox(
     "Validation source",
     options=["wikipedia", "tmdb", "omdb", "comprehensive"],

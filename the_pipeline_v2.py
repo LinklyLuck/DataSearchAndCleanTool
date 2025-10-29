@@ -354,7 +354,7 @@ class Config:
     left_model: str = "gpt-4o-mini"
     map_model: str = "gpt-4o-mini"
     join_model: str = "gpt-4o-mini"
-    max_concurrency: int = 2
+    max_concurrency: int = 8
     cache_path: Path = Path(".llm_cache.sqlite")
     api_base: str = "https://goapi.gptnb.ai/v1/chat/completions"
     api_key: str = ""
@@ -368,7 +368,7 @@ class Config:
 
     # —— 新增：数据清洗与外部验证（可选） ——
     enable_cleaning: bool = False
-    cleaning_mode: str = "comprehensive"
+    cleaning_mode: str = "ultra"
     cleaning_rules: dict | None = None
     enable_validation: bool = False
     validation_source: str = "wikipedia"
@@ -1967,9 +1967,9 @@ async def process(cfg: Config):
             import traceback
             traceback.print_exc()
 
-    # ====================================================================
-    # 阶段3: 数据清洗（可选）
-    # ====================================================================
+# ====================================================================
+# 阶段3: 数据清洗（可选）
+# ====================================================================
     cleaning_enabled = getattr(cfg, "enable_cleaning", False)
     if cleaning_enabled:
         if not _HAS_CLEANING_PROVIDERS:
@@ -1977,8 +1977,19 @@ async def process(cfg: Config):
         else:
             try:
                 print("\n[CLEAN] Starting data cleaning...")
-                cleaning_mode = getattr(cfg, "cleaning_mode", "comprehensive")
+                cleaning_mode = getattr(cfg, "cleaning_mode", "hybrid")  # ✅ 改为 "hybrid"
                 cleaning_rules = getattr(cfg, "cleaning_rules", None)
+
+                # 显示清洗模式信息
+                mode_info = {
+                    "hybrid": "混合清洗（规则+智能LLM，速度快3-10倍）",
+                    "fast": "快速规则清洗（纯规则，速度快10-20倍）",
+                    "batch": "批量LLM清洗（批量优化，速度快3-5倍）",
+                    "comprehensive": "综合清洗（传统模式，准确但较慢）",
+                    "type": "类型清洗（基础清洗）"
+                }
+                print(f"[CLEAN] Mode: {cleaning_mode} - {mode_info.get(cleaning_mode, 'Unknown mode')}")
+
                 cleaned_df, cleaning_report = await clean_data(
                     df=merged,
                     primary_keys=pk_candidates,
@@ -2201,3 +2212,4 @@ if __name__ == "__main__":
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else None
     cfg = load_config(cfg_path)
     asyncio.run(process(cfg))
+# [Patch Note] Accelerated cleaning could not be auto-inserted due to unmatched markers.

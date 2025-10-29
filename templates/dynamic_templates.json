@@ -670,5 +670,148 @@
       "same_origin": true,
       "max_blowup_ratio": 1.8
     }
+  },
+  "f3e795765d02": {
+    "domain": "movie",
+    "keywords": [
+      "film",
+      "cinema",
+      "director",
+      "release_year",
+      "genre",
+      "actor",
+      "box_office",
+      "script",
+      "studio",
+      "film_festival"
+    ],
+    "feature_sets": [
+      [
+        "title",
+        "release_year",
+        "director_name",
+        "actor_names",
+        "genre",
+        "box_office"
+      ],
+      [
+        "film_title",
+        "year",
+        "director",
+        "lead_actors",
+        "movie_genre",
+        "studio_name"
+      ],
+      [
+        "movie_title",
+        "pub_year",
+        "director_name",
+        "cast",
+        "category",
+        "budget"
+      ]
+    ],
+    "join_keys": [
+      "movie_id",
+      "title",
+      "release_year"
+    ],
+    "canonical_order": [
+      "title",
+      "release_year",
+      "director_name",
+      "actor_names",
+      "genre",
+      "studio_name",
+      "box_office",
+      "budget"
+    ],
+    "alias_rules": {
+      "^(title|movie_title|film_title|name)$": "title",
+      "^(year|release_year|pub_year|date)$": "release_year",
+      "^(director|director_name)$": "director_name",
+      "^(actor|actor_name|lead_actor|lead_actors|cast)$": "actor_names",
+      "^(genre|category|film_genre|movie_genre)$": "genre",
+      "^(box_office|revenue)$": "box_office",
+      "^(studio|studio_name|film_studio)$": "studio_name"
+    },
+    "policy": {
+      "strong_keys": [
+        "title",
+        "release_year"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
+  },
+  "5dde394a30b0": {
+    "domain": "movie",
+    "keywords": [
+      "movies",
+      "film",
+      "cinema",
+      "movie dataset",
+      "movie analysis",
+      "movie database",
+      "movie industry",
+      "actor",
+      "director",
+      "release year"
+    ],
+    "feature_sets": [
+      [
+        "title",
+        "release_year",
+        "director_name",
+        "genre",
+        "lead_actor",
+        "language"
+      ],
+      [
+        "movie_title",
+        "year",
+        "producer",
+        "cast",
+        "duration",
+        "country_origin"
+      ],
+      [
+        "film_title",
+        "pub_year",
+        "director",
+        "main_cast",
+        "production_company",
+        "box_office"
+      ]
+    ],
+    "join_keys": [
+      "title",
+      "release_year"
+    ],
+    "canonical_order": [
+      "title",
+      "release_year",
+      "director_name",
+      "genre",
+      "lead_actor",
+      "language"
+    ],
+    "alias_rules": {
+      "^(title|movie_title|film_title|name)$": "title",
+      "^(year|release_year|pub_year|date)$": "release_year",
+      "^(director|director_name)$": "director_name",
+      "^(actor|lead_actor|main_cast)$": "lead_actor",
+      "^(genre|type|category)$": "genre"
+    },
+    "policy": {
+      "strong_keys": [
+        "title",
+        "release_year"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
   }
 }
