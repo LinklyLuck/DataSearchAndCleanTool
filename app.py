@@ -31,15 +31,31 @@ k_key = st.sidebar.text_input("Kaggle API Key (KAGGLE_KEY)", type="password", va
 omdb_key = st.sidebar.text_input("OMDb API Key (OMDB_API_KEY)", type="password", value=os.getenv("OMDB_API_KEY", ""))
 tmdb_key = st.sidebar.text_input("TMDb API Key (TMDB_API_KEY)", type="password", value=os.getenv("TMDB_API_KEY", ""))
 
-st.sidebar.divider()
-st.sidebar.header("🧩 ER / MVI Options")
-st.sidebar.caption("ER=Entity Resolution (LLM-driven); MVI=Missing Value Imputation (API-driven)")
-enable_er = st.sidebar.checkbox("Enable ER (Entity Resolution - deduplicate entities)", value=True)
-enable_mvi = st.sidebar.checkbox("Enable MVI (Missing Value Imputation - Wikipedia/TMDb/OMDb/Kaggle)", value=True)
-er_sample_rows = st.sidebar.slider("ER/MVI Sample Rows (to limit external requests)", min_value=50, max_value=1000,
-                                   value=200,
-                                   step=50)
-st.sidebar.caption("👉 Without API keys, only Wikipedia (no key required) will be used.")
+# ---------------------- Sidebar: Cleaning & Validation ----------------------
+st.sidebar.header("🧽 Cleaning & Validation")
+perform_cleaning = st.sidebar.checkbox("Enable data cleaning & external validation", value=False)
+cleaning_mode = st.sidebar.selectbox(
+    "Cleaning mode",
+    options=["comprehensive", "llm", "type", "minimal"],
+    index=0,
+    disabled=not perform_cleaning
+)
+validation_source = st.sidebar.selectbox(
+    "Validation source",
+    options=["wikipedia", "tmdb", "omdb", "comprehensive"],
+    index=0,
+    disabled=not perform_cleaning
+)
+validation_cols_text = st.sidebar.text_input(
+    "Columns to validate (comma separated, optional)",
+    value="",
+    disabled=not perform_cleaning
+)
+
+validation_columns = None
+if perform_cleaning:
+    cols = [c.strip() for c in validation_cols_text.split(",") if c.strip()]
+    validation_columns = cols if cols else None
 
 # ---------------------- Queries Input ----------------------
 st.subheader("📝 Natural Language Queries (one per line)")
@@ -119,8 +135,26 @@ def run_one_query(idx: int, question: str) -> dict:
         "max_concurrency": int(max_conc),
         "api_base": api_base,
         "api_key": api_key or os.getenv("GPTNB_API_KEY", ""),
-        "er_mvi_sample_rows": int(er_sample_rows),
     }
+    if perform_cleaning:
+        cfg.update({
+            "enable_cleaning": True,
+            "cleaning_mode": cleaning_mode,
+            "enable_validation": True,
+            "validation_source": validation_source,
+            "validation_columns": validation_columns,
+            "validation_api_keys": {
+                k: v for k, v in {
+                    "tmdb": tmdb_key,
+                    "omdb": omdb_key,
+                }.items() if v
+            }
+        })
+    else:
+        cfg.update({
+            "enable_cleaning": False,
+            "enable_validation": False,
+        })
     cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # Build subprocess environment: LLM + external enhancement
@@ -131,11 +165,6 @@ def run_one_query(idx: int, question: str) -> dict:
     if k_key:  env_for_child["KAGGLE_KEY"] = k_key
     if omdb_key: env_for_child["OMDB_API_KEY"] = omdb_key
     if tmdb_key: env_for_child["TMDB_API_KEY"] = tmdb_key
-
-    # Separate ER and MVI switches
-    env_for_child["ER_ENABLED"] = "1" if enable_er else "0"
-    env_for_child["MVI_ENABLED"] = "1" if enable_mvi else "0"
-    env_for_child["ER_MVI_SAMPLE_ROWS"] = str(er_sample_rows)
 
     # Run main pipeline
     t0 = time.time()
@@ -168,6 +197,10 @@ def run_one_query(idx: int, question: str) -> dict:
         "validation_score": None,
         "validation_stdout": "",
         "validation_stderr": "",
+        "cleaning_report": "",
+        "cleaning_summary": {},
+        "validation_provider_report": "",
+        "validation_summary": {},
     }
 
     # Read entity_report from meta (if exists)
@@ -181,6 +214,24 @@ def run_one_query(idx: int, question: str) -> dict:
                     erp_path = out_csv.with_name(out_csv.stem + "_entity_report.csv")
                 if erp_path.exists():
                     summary["entity_report"] = str(erp_path)
+            clean_report = meta.get("cleaning_report", "")
+            if clean_report:
+                clean_path = Path(clean_report)
+                if not clean_path.is_absolute() and out_csv_exists:
+                    clean_path = out_csv.with_name(out_csv.stem + "_cleaning_report.json")
+                if clean_path.exists():
+                    summary["cleaning_report"] = str(clean_path)
+            validation_provider_rep = meta.get("validation_report", "")
+            if validation_provider_rep:
+                vpr_path = Path(validation_provider_rep)
+                if not vpr_path.is_absolute() and out_csv_exists:
+                    vpr_path = out_csv.with_name(out_csv.stem + "_validation_provider_report.json")
+                if vpr_path.exists():
+                    summary["validation_provider_report"] = str(vpr_path)
+            if isinstance(meta.get("cleaning"), dict):
+                summary["cleaning_summary"] = meta["cleaning"]
+            if isinstance(meta.get("validation"), dict):
+                summary["validation_summary"] = meta["validation"]
         except Exception:
             pass
 
@@ -295,6 +346,36 @@ if run:
                             file_name=rp.name,
                             mime="text/csv"
                         )
+
+                # Cleaning stage report (if enabled)
+                if res.get("cleaning_report") or res.get("cleaning_summary"):
+                    with st.expander("🧽 Cleaning Summary", expanded=False):
+                        if res.get("cleaning_summary"):
+                            st.json(res["cleaning_summary"])
+                        if res.get("cleaning_report"):
+                            clean_path = Path(res["cleaning_report"])
+                            if clean_path.exists():
+                                st.download_button(
+                                    "⬇️ Download Cleaning Report (JSON)",
+                                    data=clean_path.read_bytes(),
+                                    file_name=clean_path.name,
+                                    mime="application/json"
+                                )
+
+                # External validation provider report (post-cleaning)
+                if res.get("validation_provider_report") or res.get("validation_summary"):
+                    with st.expander("✅ External Validation Summary", expanded=False):
+                        if res.get("validation_summary"):
+                            st.json(res["validation_summary"])
+                        if res.get("validation_provider_report"):
+                            vpr = Path(res["validation_provider_report"])
+                            if vpr.exists():
+                                st.download_button(
+                                    "⬇️ Download External Validation Report (JSON)",
+                                    data=vpr.read_bytes(),
+                                    file_name=vpr.name,
+                                    mime="application/json"
+                                )
 
                 # ═══════════════════════════════════════════════════════════
                 # 🎓 VLDB Validation Report (NEW)

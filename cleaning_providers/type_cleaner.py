@@ -8,7 +8,6 @@ Type Consistency Cleaner
 - 布尔值标准化
 """
 from __future__ import annotations
-import re
 from typing import List, Dict, Optional, Any, Tuple
 import polars as pl
 from .base import CleaningProvider, CleaningReport
@@ -47,23 +46,20 @@ class TypeCleaningProvider(CleaningProvider):
 
             # 数值列清洗
             if self._is_numeric_column(df, col):
-                col_changes = self._clean_numeric_column(cleaned_df, col, primary_keys)
+                cleaned_df, col_changes = self._clean_numeric_column(cleaned_df, col, primary_keys)
                 if col_changes:
-                    cleaned_df = self._apply_numeric_cleaning(cleaned_df, col, col_changes)
                     changes.extend(col_changes)
 
             # 日期列清洗
             elif self._is_date_column(df, col):
-                col_changes = self._clean_date_column(cleaned_df, col, primary_keys)
+                cleaned_df, col_changes = self._clean_date_column(cleaned_df, col, primary_keys)
                 if col_changes:
-                    cleaned_df = self._apply_date_cleaning(cleaned_df, col, col_changes)
                     changes.extend(col_changes)
 
             # 布尔列清洗
             elif self._is_boolean_column(df, col):
-                col_changes = self._clean_boolean_column(cleaned_df, col, primary_keys)
+                cleaned_df, col_changes = self._clean_boolean_column(cleaned_df, col, primary_keys)
                 if col_changes:
-                    cleaned_df = self._apply_boolean_cleaning(cleaned_df, col, col_changes)
                     changes.extend(col_changes)
 
         report = self._create_report(changes)
@@ -99,160 +95,243 @@ class TypeCleaningProvider(CleaningProvider):
             df: pl.DataFrame,
             col: str,
             primary_keys: List[str]
-    ) -> List[Dict[str, Any]]:
-        """清洗数值列"""
-        changes = []
+    ) -> Tuple[pl.DataFrame, List[Dict[str, Any]]]:
+        """清洗数值列（向量化实现）"""
+        if df.height == 0:
+            return df, []
 
-        for i in range(len(df)):
-            old_val = df[col][i]
-            if old_val is None:
-                continue
+        original = pl.col(col)
+        original_str = original.cast(pl.Utf8, strict=False)
 
-            # 尝试转换为数值
-            try:
-                str_val = str(old_val).strip()
-                # 移除千分位逗号
-                str_val = str_val.replace(",", "")
-                # 移除货币符号
-                str_val = re.sub(r"[$€£¥]", "", str_val)
+        sanitized = original_str.str.strip()
+        sanitized = sanitized.str.replace_all(",", "")
+        sanitized = sanitized.str.replace_all(r"[$€£¥]", "")
+        sanitized = pl.when(
+            sanitized.is_null() | (sanitized.str.len_chars() == 0)
+        ).then(None).otherwise(sanitized)
 
-                # 尝试转换
-                if "." in str_val:
-                    new_val = float(str_val)
-                else:
-                    new_val = int(str_val)
+        is_numeric = sanitized.str.match(r"^-?\d+(?:\.\d+)?$").fill_null(False)
+        has_decimal = sanitized.str.contains(r"\.").fill_null(False)
 
-                if str(old_val) != str(new_val):
-                    pk_info = {k: df[k][i] for k in primary_keys if k in df.columns}
-                    changes.append({
-                        "row_index": i,
-                        **pk_info,
-                        "column": col,
-                        "before": old_val,
-                        "after": new_val,
-                        "reason": "Type fix: converted to numeric"
-                    })
-            except:
-                # 无法转换，标记为None
-                pk_info = {k: df[k][i] for k in primary_keys if k in df.columns}
+        as_float = sanitized.cast(pl.Float64, strict=False)
+        as_int = sanitized.cast(pl.Int64, strict=False)
+
+        converted_numeric = pl.when(is_numeric & has_decimal).then(as_float).when(is_numeric).then(
+            as_int.cast(pl.Float64, strict=False)
+        ).otherwise(None)
+        converted_str = pl.when(is_numeric & has_decimal).then(
+            as_float.cast(pl.Utf8, strict=False)
+        ).when(is_numeric).then(
+            as_int.cast(pl.Utf8, strict=False)
+        ).otherwise(None)
+
+        invalid_mask = original.is_not_null() & sanitized.is_not_null() & (~is_numeric)
+        converted_change = (converted_str != original_str).fill_null(False) & is_numeric
+        needs_update = converted_change | invalid_mask
+
+        report_df = df.select([
+            pl.arange(0, pl.count()).alias("_row_index"),
+            original.alias("_original"),
+            converted_numeric.alias("_converted_numeric"),
+            converted_str.alias("_converted_str"),
+            invalid_mask.alias("_invalid"),
+            converted_change.alias("_converted_change"),
+            needs_update.alias("_needs_update")
+        ])
+
+        if not report_df["_needs_update"].any():
+            return df, []
+
+        changes: List[Dict[str, Any]] = []
+        for row in report_df.filter(pl.col("_needs_update")).iter_rows(named=True):
+            idx = row["_row_index"]
+            pk_info = {k: df[k][idx] for k in primary_keys if k in df.columns}
+            if row["_invalid"]:
                 changes.append({
-                    "row_index": i,
+                    "row_index": idx,
                     **pk_info,
                     "column": col,
-                    "before": old_val,
+                    "before": row["_original"],
                     "after": None,
                     "reason": "Type fix: invalid numeric value"
                 })
+            else:
+                changes.append({
+                    "row_index": idx,
+                    **pk_info,
+                    "column": col,
+                    "before": row["_original"],
+                    "after": row["_converted_numeric"],
+                    "reason": "Type fix: converted to numeric"
+                })
 
-        return changes
+        updated_df = df.with_columns([
+            pl.when(is_numeric & has_decimal)
+            .then(as_float)
+            .when(is_numeric)
+            .then(as_int.cast(pl.Float64, strict=False))
+            .when(invalid_mask)
+            .then(pl.lit(None, dtype=pl.Float64))
+            .otherwise(original.cast(pl.Float64, strict=False))
+            .alias(col)
+        ])
+
+        return updated_df, changes
 
     def _clean_date_column(
             self,
             df: pl.DataFrame,
             col: str,
             primary_keys: List[str]
-    ) -> List[Dict[str, Any]]:
-        """清洗日期列"""
-        changes = []
+    ) -> Tuple[pl.DataFrame, List[Dict[str, Any]]]:
+        """清洗日期列（向量化实现）"""
+        if df.height == 0:
+            return df, []
 
-        # 常见日期格式
-        date_patterns = [
-            r"(\d{4})-(\d{1,2})-(\d{1,2})",  # YYYY-MM-DD
-            r"(\d{1,2})/(\d{1,2})/(\d{4})",  # MM/DD/YYYY
-            r"(\d{4})(\d{2})(\d{2})",  # YYYYMMDD
-        ]
+        # 已经是日期/日期时间列则跳过
+        if df.schema[col] in (pl.Date, pl.Datetime):
+            return df, []
 
-        for i in range(len(df)):
-            old_val = df[col][i]
-            if old_val is None:
-                continue
+        original = pl.col(col)
+        original_str = original.cast(pl.Utf8, strict=False)
+        stripped = original_str.str.strip()
+        stripped = pl.when(
+            stripped.is_null() | (stripped.str.len_chars() == 0)
+        ).then(None).otherwise(stripped)
 
-            str_val = str(old_val).strip()
+        parsed = pl.coalesce(
+            stripped.str.strptime(pl.Date, "%Y-%m-%d", strict=False),
+            stripped.str.strptime(pl.Date, "%m/%d/%Y", strict=False),
+            stripped.str.strptime(pl.Date, "%Y%m%d", strict=False)
+        )
+        normalized = parsed.dt.strftime("%Y-%m-%d")
 
-            # 尝试匹配并标准化为 YYYY-MM-DD
-            matched = False
-            for pattern in date_patterns:
-                match = re.match(pattern, str_val)
-                if match:
-                    groups = match.groups()
+        invalid_mask = original.is_not_null() & stripped.is_not_null() & parsed.is_null()
+        changed_mask = (normalized != original_str).fill_null(False) & normalized.is_not_null()
+        needs_update = changed_mask | invalid_mask
 
-                    # 判断格式并重组
-                    if len(groups[0]) == 4:  # YYYY-...
-                        year, month, day = groups
-                    else:  # MM/DD/YYYY
-                        month, day, year = groups
+        report_df = df.select([
+            pl.arange(0, pl.count()).alias("_row_index"),
+            original.alias("_original"),
+            normalized.alias("_normalized"),
+            invalid_mask.alias("_invalid"),
+            changed_mask.alias("_changed"),
+            needs_update.alias("_needs_update")
+        ])
 
-                    try:
-                        new_val = f"{int(year)}-{int(month):02d}-{int(day):02d}"
+        if not report_df["_needs_update"].any():
+            return df, []
 
-                        if str_val != new_val:
-                            pk_info = {k: df[k][i] for k in primary_keys if k in df.columns}
-                            changes.append({
-                                "row_index": i,
-                                **pk_info,
-                                "column": col,
-                                "before": old_val,
-                                "after": new_val,
-                                "reason": "Type fix: date format standardized"
-                            })
-
-                        matched = True
-                        break
-                    except:
-                        continue
-
-            if not matched and old_val not in (None, ""):
-                # 无法解析的日期，标记为None
-                pk_info = {k: df[k][i] for k in primary_keys if k in df.columns}
+        changes: List[Dict[str, Any]] = []
+        for row in report_df.filter(pl.col("_needs_update")).iter_rows(named=True):
+            idx = row["_row_index"]
+            pk_info = {k: df[k][idx] for k in primary_keys if k in df.columns}
+            if row["_invalid"]:
                 changes.append({
-                    "row_index": i,
+                    "row_index": idx,
                     **pk_info,
                     "column": col,
-                    "before": old_val,
+                    "before": row["_original"],
                     "after": None,
                     "reason": "Type fix: invalid date format"
                 })
+            else:
+                changes.append({
+                    "row_index": idx,
+                    **pk_info,
+                    "column": col,
+                    "before": row["_original"],
+                    "after": row["_normalized"],
+                    "reason": "Type fix: date format standardized"
+                })
 
-        return changes
+        updated_df = df.with_columns([
+            pl.when(normalized.is_not_null())
+            .then(normalized)
+            .when(invalid_mask)
+            .then(pl.lit(None, dtype=pl.Utf8))
+            .otherwise(original_str)
+            .alias(col)
+        ])
+
+        return updated_df, changes
 
     def _clean_boolean_column(
             self,
             df: pl.DataFrame,
             col: str,
             primary_keys: List[str]
-    ) -> List[Dict[str, Any]]:
-        """清洗布尔列"""
-        changes = []
+    ) -> Tuple[pl.DataFrame, List[Dict[str, Any]]]:
+        """清洗布尔列（向量化实现）"""
+        if df.height == 0:
+            return df, []
 
-        true_values = {"true", "yes", "1", "t", "y"}
-        false_values = {"false", "no", "0", "f", "n"}
+        if df.schema[col] == pl.Boolean:
+            return df, []
 
-        for i in range(len(df)):
-            old_val = df[col][i]
-            if old_val is None:
-                continue
+        original = pl.col(col)
+        original_str = original.cast(pl.Utf8, strict=False)
+        lowered = original_str.str.to_lowercase().str.strip()
+        lowered = pl.when(
+            lowered.is_null() | (lowered.str.len_chars() == 0)
+        ).then(None).otherwise(lowered)
 
-            str_val = str(old_val).lower().strip()
+        true_values = ["true", "yes", "1", "t", "y"]
+        false_values = ["false", "no", "0", "f", "n"]
 
-            if str_val in true_values:
-                new_val = True
-            elif str_val in false_values:
-                new_val = False
-            else:
-                new_val = None
+        converted = pl.when(lowered.is_in(true_values)).then(pl.lit(True)).when(
+            lowered.is_in(false_values)
+        ).then(pl.lit(False)).otherwise(None)
 
-            if old_val != new_val:
-                pk_info = {k: df[k][i] for k in primary_keys if k in df.columns}
+        invalid_mask = original.is_not_null() & lowered.is_not_null() & converted.is_null()
+        changed_mask = (converted.cast(pl.Utf8, strict=False) != original_str).fill_null(False) & converted.is_not_null()
+        needs_update = changed_mask | invalid_mask
+
+        report_df = df.select([
+            pl.arange(0, pl.count()).alias("_row_index"),
+            original.alias("_original"),
+            converted.alias("_converted"),
+            invalid_mask.alias("_invalid"),
+            changed_mask.alias("_changed"),
+            needs_update.alias("_needs_update")
+        ])
+
+        if not report_df["_needs_update"].any():
+            return df, []
+
+        changes: List[Dict[str, Any]] = []
+        for row in report_df.filter(pl.col("_needs_update")).iter_rows(named=True):
+            idx = row["_row_index"]
+            pk_info = {k: df[k][idx] for k in primary_keys if k in df.columns}
+            if row["_invalid"]:
                 changes.append({
-                    "row_index": i,
+                    "row_index": idx,
                     **pk_info,
                     "column": col,
-                    "before": old_val,
-                    "after": new_val,
+                    "before": row["_original"],
+                    "after": None,
+                    "reason": "Type fix: boolean standardized"
+                })
+            else:
+                changes.append({
+                    "row_index": idx,
+                    **pk_info,
+                    "column": col,
+                    "before": row["_original"],
+                    "after": row["_converted"],
                     "reason": "Type fix: boolean standardized"
                 })
 
-        return changes
+        updated_df = df.with_columns([
+            pl.when(converted.is_not_null())
+            .then(converted)
+            .when(invalid_mask)
+            .then(pl.lit(None, dtype=pl.Boolean))
+            .otherwise(original)
+            .alias(col)
+        ])
+
+        return updated_df, changes
 
     def _apply_numeric_cleaning(
             self,
