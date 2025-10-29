@@ -230,7 +230,7 @@ def main():
     parser.add_argument(
         "--validator",
         type=Path,
-        default=Path("validate_output_dataset.py"),
+        default=Path("validation_report_v2.py"),
         help="Path to validation script"
     )
     parser.add_argument(

@@ -153,5 +153,98 @@
       "same_origin": true,
       "max_blowup_ratio": 1.8
     }
+  },
+  "58e961a4f007": {
+    "domain": "wine",
+    "keywords": [
+      "wine",
+      "vineyard",
+      "grape",
+      "vintner",
+      "winery",
+      "tasting",
+      "vintage",
+      "region",
+      "varietal",
+      "sommelier"
+    ],
+    "feature_sets": [
+      [
+        "wine_name",
+        "winery",
+        "country",
+        "region",
+        "variety",
+        "vintage",
+        "alcohol_content",
+        "sugar_content",
+        "pH",
+        "acidity",
+        "price"
+      ],
+      [
+        "grape_variety",
+        "winery_name",
+        "wine_type",
+        "production_year",
+        "origin_country",
+        "sales_price",
+        "taste_notes",
+        "pairing_suggestions",
+        "award_won"
+      ],
+      [
+        "brand",
+        "wine_category",
+        "degree_of_alcohol",
+        "sweetness_level",
+        "acidity_level",
+        "winemaker",
+        "bottle_size",
+        "average_rating"
+      ]
+    ],
+    "join_keys": [
+      "wine_name",
+      "winery",
+      "vintage",
+      "variety"
+    ],
+    "canonical_order": [
+      "wine_name",
+      "winery",
+      "country",
+      "region",
+      "variety",
+      "vintage",
+      "alcohol_content",
+      "sugar_content",
+      "pH",
+      "acidity",
+      "price"
+    ],
+    "alias_rules": {
+      "^(wine_name|label|wine_title)$": "wine_name",
+      "^(winery|producer|winemaker|vintner)$": "winery",
+      "^(country|origin_country)$": "country",
+      "^(region|area)$": "region",
+      "^(variety|grape_variety)$": "variety",
+      "^(vintage|production_year|year)$": "vintage",
+      "^(alcohol_content|degree_of_alcohol|alc_content)$": "alcohol_content",
+      "^(sugar_content|sweetness_level)$": "sugar_content",
+      "^(ph|acid_level)$": "pH",
+      "^(acidity|acidity_level)$": "acidity",
+      "^(price|cost|sales_price)$": "price"
+    },
+    "policy": {
+      "strong_keys": [
+        "wine_name",
+        "winery",
+        "vintage"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
   }
 }
