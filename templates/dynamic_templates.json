@@ -246,5 +246,85 @@
       "same_origin": true,
       "max_blowup_ratio": 1.8
     }
+  },
+  "a51ae9a20dba": {
+    "domain": "wine",
+    "keywords": [
+      "wine",
+      "vineyard",
+      "grape",
+      "terroir",
+      "winemaker",
+      "vintage",
+      "wine_tasting",
+      "varietal",
+      "wine_region",
+      "oenology"
+    ],
+    "feature_sets": [
+      [
+        "wine_name",
+        "vintage_year",
+        "grape_variety",
+        "winery",
+        "region",
+        "alcohol_content"
+      ],
+      [
+        "producer",
+        "wine_type",
+        "vintage",
+        "region",
+        "wine_body",
+        "rating"
+      ],
+      [
+        "label_name",
+        "origin",
+        "varietal",
+        "bottle_size",
+        "tags",
+        "price"
+      ]
+    ],
+    "join_keys": [
+      "wine_id",
+      "vintage_year",
+      "winery",
+      "region"
+    ],
+    "canonical_order": [
+      "wine_name",
+      "vintage_year",
+      "grape_variety",
+      "winery",
+      "region",
+      "alcohol_content",
+      "price",
+      "wine_type",
+      "rating",
+      "wine_id"
+    ],
+    "alias_rules": {
+      "^(wine_name|label_name|product_name)$": "wine_name",
+      "^(vintage_year|year|vintage)$": "vintage_year",
+      "^(grape_variety|varietal|grape_type)$": "grape_variety",
+      "^(winery|producer|manufacturer)$": "winery",
+      "^(region|origin|wine_region)$": "region",
+      "^(alcohol_content|alc_content|abv)$": "alcohol_content",
+      "^(price|cost|value)$": "price",
+      "^(wine_type|type|category)$": "wine_type",
+      "^(rating|score|review)$": "rating",
+      "^(wine_id|id|identifier)$": "wine_id"
+    },
+    "policy": {
+      "strong_keys": [
+        "wine_id",
+        "vintage_year"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
   }
 }

@@ -194,12 +194,28 @@ class ValidationEngine:
     def load_data(self):
         """Load merged CSV and metadata"""
         # Load CSV
-        try:
-            self.df = pl.read_csv(self.merged_csv)
-            print(f"[ValidationEngine] Loaded CSV: {self.df.shape}")
-        except Exception as e:
-            self.errors.append(f"Failed to load CSV: {e}")
-            raise
+        csv_read_attempts: List[Tuple[Dict[str, Any], str]] = [
+            ({}, "default settings"),
+            ({"infer_schema_length": 0}, "full-file schema inference"),
+            ({"infer_schema_length": 0, "dtypes": pl.Utf8}, "forcing all columns to strings"),
+        ]
+
+        last_error: Optional[Exception] = None
+        for kwargs, description in csv_read_attempts:
+            try:
+                self.df = pl.read_csv(self.merged_csv, **kwargs)
+                print(f"[ValidationEngine] Loaded CSV with {description}: {self.df.shape}")
+                break
+            except Exception as e:
+                last_error = e
+                print(
+                    f"[ValidationEngine] CSV load failed using {description}: {e}. "
+                    "Retrying with fallback strategy..."
+                )
+        else:
+            error_message = f"Failed to load CSV after retries: {last_error}"
+            self.errors.append(error_message)
+            raise last_error
 
         # Load metadata
         try:
@@ -299,7 +315,7 @@ class ValidationEngine:
         total_input = sum(d.get("rows_raw", 0) for d in diagnostics)
 
         # Output rows
-        output_rows = self.df.height if self.df else 0
+        output_rows = self.df.height if self.df is not None else 0
 
         rows_retained = output_rows
         rows_lost = max(0, total_input - output_rows)
@@ -359,7 +375,7 @@ class ValidationEngine:
                 "join_keys": d.get("join_keys_used", [])
             })
 
-        target_features = len(self.df.columns) if self.df else 0
+        target_features = len(self.df.columns) if self.df is not None else 0
 
         mapping_coverage = total_mapped / max(1, target_features * len(diagnostics))
 
