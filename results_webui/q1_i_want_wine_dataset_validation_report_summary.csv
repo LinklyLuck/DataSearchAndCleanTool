@@ -1,0 +1,2 @@
+report_id,timestamp,query,overall_score,data_quality_score,merge_quality_score,schema_alignment_score,er_enabled,er_dedup_rate,mvi_enabled,mvi_fill_rate,total_rows,total_columns,warnings,errors
+vldb_1761756977,2025-10-29T12:56:17.324170,I want wine dataset,57.14,0.75,0.8333,0.4821,false,0.0,false,0.0,4495,14,0,0

@@ -8,6 +8,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import numpy as np
 import polars as pl
+import csv
 
 # Visualization
 try:
@@ -194,16 +195,29 @@ class ValidationEngine:
     def load_data(self):
         """Load merged CSV and metadata"""
         # Load CSV
-        csv_read_attempts: List[Tuple[Dict[str, Any], str]] = [
-            ({}, "default settings"),
-            ({"infer_schema_length": 0}, "full-file schema inference"),
-            ({"infer_schema_length": 0, "dtypes": pl.Utf8}, "forcing all columns to strings"),
+        csv_read_attempts: List[Tuple[str, Dict[str, Any], str]] = [
+            ("polars", {}, "default settings"),
+            ("polars", {"infer_schema_length": 0}, "full-file schema inference"),
+            (
+                "polars",
+                {"infer_schema_length": 0, "dtypes": pl.Utf8},
+                "forcing all columns to strings",
+            ),
+            ("python", {}, "python csv fallback for nested data"),
         ]
 
         last_error: Optional[Exception] = None
-        for kwargs, description in csv_read_attempts:
+        for engine, kwargs, description in csv_read_attempts:
             try:
-                self.df = pl.read_csv(self.merged_csv, **kwargs)
+                if engine == "polars":
+                    self.df = pl.read_csv(self.merged_csv, **kwargs)
+                else:
+                    with self.merged_csv.open("r", encoding="utf-8", newline="") as fh:
+                        reader = csv.DictReader(fh)
+                        if reader.fieldnames is None:
+                            raise ValueError("CSV file missing header row for python fallback")
+                        rows = list(reader)
+                    self.df = pl.from_dicts(rows)
                 print(f"[ValidationEngine] Loaded CSV with {description}: {self.df.shape}")
                 break
             except Exception as e:
