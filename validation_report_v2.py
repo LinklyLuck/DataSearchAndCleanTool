@@ -1,4 +1,5 @@
 from __future__ import annotations
+import csv
 import json
 import time
 import traceback
@@ -194,12 +195,41 @@ class ValidationEngine:
     def load_data(self):
         """Load merged CSV and metadata"""
         # Load CSV
-        try:
-            self.df = pl.read_csv(self.merged_csv)
-            print(f"[ValidationEngine] Loaded CSV: {self.df.shape}")
-        except Exception as e:
-            self.errors.append(f"Failed to load CSV: {e}")
-            raise
+        csv_read_attempts: List[Tuple[str, Dict[str, Any], str]] = [
+            ("polars", {}, "default settings"),
+            ("polars", {"infer_schema_length": 0}, "full-file schema inference"),
+            (
+                "polars",
+                {"infer_schema_length": 0, "dtypes": pl.Utf8},
+                "forcing all columns to strings",
+            ),
+            ("python", {}, "python csv fallback for nested data"),
+        ]
+
+        last_error: Optional[Exception] = None
+        for engine, kwargs, description in csv_read_attempts:
+            try:
+                if engine == "polars":
+                    self.df = pl.read_csv(self.merged_csv, **kwargs)
+                else:
+                    with self.merged_csv.open("r", encoding="utf-8", newline="") as fh:
+                        reader = csv.DictReader(fh)
+                        if reader.fieldnames is None:
+                            raise ValueError("CSV file missing header row for python fallback")
+                        rows = list(reader)
+                    self.df = pl.from_dicts(rows)
+                print(f"[ValidationEngine] Loaded CSV with {description}: {self.df.shape}")
+                break
+            except Exception as e:
+                last_error = e
+                print(
+                    f"[ValidationEngine] CSV load failed using {description}: {e}. "
+                    "Retrying with fallback strategy..."
+                )
+        else:
+            error_message = f"Failed to load CSV after retries: {last_error}"
+            self.errors.append(error_message)
+            raise last_error
 
         # Load metadata
         try:
@@ -299,7 +329,7 @@ class ValidationEngine:
         total_input = sum(d.get("rows_raw", 0) for d in diagnostics)
 
         # Output rows
-        output_rows = self.df.height if self.df else 0
+        output_rows = self.df.height if self.df is not None else 0
 
         rows_retained = output_rows
         rows_lost = max(0, total_input - output_rows)
@@ -359,7 +389,7 @@ class ValidationEngine:
                 "join_keys": d.get("join_keys_used", [])
             })
 
-        target_features = len(self.df.columns) if self.df else 0
+        target_features = len(self.df.columns) if self.df is not None else 0
 
         mapping_coverage = total_mapped / max(1, target_features * len(diagnostics))
 
