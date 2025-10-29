@@ -304,7 +304,6 @@ class WikipediaValidationProvider(ValidationProvider):
 
         return {}
 
-
     def _simple_category(self, text: str) -> Optional[str]:
         """使用通用语法模式提取类别"""
         patterns = [

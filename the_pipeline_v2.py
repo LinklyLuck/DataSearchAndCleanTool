@@ -178,6 +178,21 @@ except ImportError:
     print("[INFO] mvi_providers not found, MVI will be skipped")
 
 try:
+    from cleaning_providers import clean_data
+
+    _HAS_CLEANING_PROVIDERS = True
+except ImportError:
+    _HAS_CLEANING_PROVIDERS = False
+    print("[INFO] cleaning_providers not found, cleaning stage will be skipped")
+
+try:
+    from validation_providers import validate_data
+
+    _HAS_VALIDATION_PROVIDERS = True
+except ImportError:
+    _HAS_VALIDATION_PROVIDERS = False
+    print("[INFO] validation_providers not found, validation stage will be skipped")
+try:
     import yaml  # optional for .yaml config
 except ImportError:
     yaml = None
@@ -351,6 +366,14 @@ class Config:
     max_rows_per_file: int = 200_000  # 每个文件最多读取多少行（超出截断）
     filter_by_query_keywords: bool = True  # 根据 query 关键词粗过滤文件名
 
+    # —— 新增：数据清洗与外部验证（可选） ——
+    enable_cleaning: bool = False
+    cleaning_mode: str = "comprehensive"
+    cleaning_rules: dict | None = None
+    enable_validation: bool = False
+    validation_source: str = "wikipedia"
+    validation_columns: Optional[List[str]] = None
+    validation_api_keys: Optional[Dict[str, str]] = None
 
 # 👉 默认扫描"用户上传 datas/ + 本地 datalake/"
 DEFAULT_CONFIG = Config(
@@ -1748,6 +1771,10 @@ async def process(cfg: Config):
     entity_report_path = None
     enrich_summary_path = None
     er_report_path = None
+    cleaning_report_path = None
+    validation_provider_report_path = None
+    cleaning_report_data = None
+    validation_report_data = None
 
     # 识别领域
     auto_domain = await detect_domain_from_query_or_columns(
@@ -1940,6 +1967,90 @@ async def process(cfg: Config):
             import traceback
             traceback.print_exc()
 
+    # ====================================================================
+    # 阶段3: 数据清洗（可选）
+    # ====================================================================
+    cleaning_enabled = getattr(cfg, "enable_cleaning", False)
+    if cleaning_enabled:
+        if not _HAS_CLEANING_PROVIDERS:
+            print("[CLEAN] cleaning_providers not available, skipping cleaning stage")
+        else:
+            try:
+                print("\n[CLEAN] Starting data cleaning...")
+                cleaning_mode = getattr(cfg, "cleaning_mode", "comprehensive")
+                cleaning_rules = getattr(cfg, "cleaning_rules", None)
+                cleaned_df, cleaning_report = await clean_data(
+                    df=merged,
+                    primary_keys=pk_candidates,
+                    llm_client=client,
+                    mode=cleaning_mode,
+                    rules=cleaning_rules
+                )
+                merged = cleaned_df
+                if cleaning_report and hasattr(cleaning_report, "to_dict"):
+                    cleaning_report_data = cleaning_report.to_dict()
+                    cleaning_report_path = Path(cfg.out).with_name(Path(cfg.out).stem + "_cleaning_report.json")
+                    Path(cleaning_report_path).write_text(
+                        json.dumps(cleaning_report_data, ensure_ascii=False, indent=2),
+                        encoding="utf-8"
+                    )
+                    print(f"[CLEAN] Report -> {cleaning_report_path}")
+                if cleaning_report and getattr(cleaning_report, "cleaned_cells", 0):
+                    print(
+                        f"[CLEAN] ✓ Cleaned {cleaning_report.cleaned_cells} cells across {len(cleaning_report.cleaned_columns)} columns"
+                    )
+            except Exception as e:
+                print(f"[WARN] Cleaning failed: {e}")
+                import traceback
+                traceback.print_exc()
+
+    # ====================================================================
+    # 阶段4: 数据验证（可选，通常在清洗后）
+    # ====================================================================
+    validation_enabled = getattr(cfg, "enable_validation", False)
+    if validation_enabled:
+        if not _HAS_VALIDATION_PROVIDERS:
+            print("[VALIDATION] validation_providers not available, skipping validation stage")
+        else:
+            try:
+                print("\n[VALIDATION] Starting external data validation...")
+                validation_source = getattr(cfg, "validation_source", "wikipedia")
+                validation_columns = getattr(cfg, "validation_columns", None)
+                validation_api_keys = getattr(cfg, "validation_api_keys", None) or {}
+                if not validation_api_keys:
+                    fallback_keys = {
+                        "tmdb": os.getenv("TMDB_API_KEY", ""),
+                        "omdb": os.getenv("OMDB_API_KEY", ""),
+                    }
+                    validation_api_keys = {k: v for k, v in fallback_keys.items() if v}
+                validated_df, validation_report = await validate_data(
+                    df=merged,
+                    primary_keys=pk_candidates,
+                    source=validation_source,
+                    api_keys=validation_api_keys,
+                    validate_columns=validation_columns,
+                    llm_client=client
+                )
+                merged = validated_df
+                if validation_report and hasattr(validation_report, "to_dict"):
+                    validation_report_data = validation_report.to_dict()
+                    validation_provider_report_path = Path(cfg.out).with_name(
+                        Path(cfg.out).stem + "_validation_provider_report.json"
+                    )
+                    Path(validation_provider_report_path).write_text(
+                        json.dumps(validation_report_data, ensure_ascii=False, indent=2),
+                        encoding="utf-8"
+                    )
+                    print(f"[VALIDATION] Report -> {validation_provider_report_path}")
+                if validation_report and getattr(validation_report, "corrected_cells", 0):
+                    print(
+                        f"[VALIDATION] ✓ Corrected {validation_report.corrected_cells} cells across {validation_report.corrected_rows} rows"
+                    )
+            except Exception as e:
+                print(f"[WARN] Validation failed: {e}")
+                import traceback
+                traceback.print_exc()
+
     # >>> 导出点名列并集副产物（如有） <<<
     if REQUESTED_COLS and requested_subset_df is not None:
         req_out = Path(cfg.out).with_name(Path(cfg.out).stem + "_requested_subset.csv")
@@ -1996,6 +2107,10 @@ async def process(cfg: Config):
         meta["entity_report"] = entity_report_path
     if enrich_summary_path:
         meta["enrich_summary_csv"] = enrich_summary_path
+    if cleaning_report_path:
+        meta["cleaning_report"] = cleaning_report_path
+    if validation_provider_report_path:
+        meta["validation_report"] = validation_provider_report_path
     if entity_report_path or enrich_summary_path:
         meta["enrich"] = {
             "provider": (provider.name if 'provider' in locals() else None),
@@ -2003,6 +2118,10 @@ async def process(cfg: Config):
             "sample_n": (len(sample_rows) if 'sample_rows' in locals() else None),
             "primary_keys": pk_candidates if 'pk_candidates' in locals() else [],
         }
+    if cleaning_report_data:
+        meta["cleaning"] = cleaning_report_data
+    if validation_report_data:
+        meta["validation"] = validation_report_data
 
     out.with_suffix(".meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(f"[OK] CSV -> {out} ({merged.height}x{merged.width})")
