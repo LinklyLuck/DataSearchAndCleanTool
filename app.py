@@ -31,16 +31,6 @@ k_key = st.sidebar.text_input("Kaggle API Key (KAGGLE_KEY)", type="password", va
 omdb_key = st.sidebar.text_input("OMDb API Key (OMDB_API_KEY)", type="password", value=os.getenv("OMDB_API_KEY", ""))
 tmdb_key = st.sidebar.text_input("TMDb API Key (TMDB_API_KEY)", type="password", value=os.getenv("TMDB_API_KEY", ""))
 
-st.sidebar.divider()
-st.sidebar.header("🧩 ER / MVI Options")
-st.sidebar.caption("ER=Entity Resolution (LLM-driven); MVI=Missing Value Imputation (API-driven)")
-enable_er = st.sidebar.checkbox("Enable ER (Entity Resolution - deduplicate entities)", value=True)
-enable_mvi = st.sidebar.checkbox("Enable MVI (Missing Value Imputation - Wikipedia/TMDb/OMDb/Kaggle)", value=True)
-er_sample_rows = st.sidebar.slider("ER/MVI Sample Rows (to limit external requests)", min_value=50, max_value=1000,
-                                   value=200,
-                                   step=50)
-st.sidebar.caption("👉 Without API keys, only Wikipedia (no key required) will be used.")
-
 # ---------------------- Sidebar: Cleaning & Validation ----------------------
 st.sidebar.header("🧽 Cleaning & Validation")
 perform_cleaning = st.sidebar.checkbox("Enable data cleaning & external validation", value=False)
@@ -145,9 +135,7 @@ def run_one_query(idx: int, question: str) -> dict:
         "max_concurrency": int(max_conc),
         "api_base": api_base,
         "api_key": api_key or os.getenv("GPTNB_API_KEY", ""),
-        "er_mvi_sample_rows": int(er_sample_rows),
     }
-
     if perform_cleaning:
         cfg.update({
             "enable_cleaning": True,
@@ -178,11 +166,6 @@ def run_one_query(idx: int, question: str) -> dict:
     if k_key:  env_for_child["KAGGLE_KEY"] = k_key
     if omdb_key: env_for_child["OMDB_API_KEY"] = omdb_key
     if tmdb_key: env_for_child["TMDB_API_KEY"] = tmdb_key
-
-    # Separate ER and MVI switches
-    env_for_child["ER_ENABLED"] = "1" if enable_er else "0"
-    env_for_child["MVI_ENABLED"] = "1" if enable_mvi else "0"
-    env_for_child["ER_MVI_SAMPLE_ROWS"] = str(er_sample_rows)
 
     # Run main pipeline
     t0 = time.time()

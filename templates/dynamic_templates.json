@@ -326,5 +326,349 @@
       "same_origin": true,
       "max_blowup_ratio": 1.8
     }
+  },
+  "aa5843a45ef1": {
+    "domain": "nba",
+    "keywords": [
+      "nba",
+      "basketball",
+      "player",
+      "team",
+      "stats",
+      "season",
+      "game",
+      "points",
+      "rebounds",
+      "assists"
+    ],
+    "feature_sets": [
+      [
+        "player_name",
+        "team_abbreviation",
+        "age",
+        "player_height",
+        "player_weight",
+        "college",
+        "country",
+        "draft_year",
+        "pts",
+        "reb",
+        "ast"
+      ],
+      [
+        "player_name",
+        "season",
+        "team_abbreviation",
+        "gp",
+        "net_rating",
+        "oreb_pct",
+        "dreb_pct",
+        "usg_pct",
+        "ts_pct"
+      ]
+    ],
+    "join_keys": [
+      "player_name",
+      "team_abbreviation",
+      "draft_year"
+    ],
+    "canonical_order": [
+      "player_name",
+      "age",
+      "team_abbreviation",
+      "season",
+      "college",
+      "country",
+      "draft_year",
+      "draft_round",
+      "draft_number",
+      "gp",
+      "pts",
+      "reb",
+      "ast",
+      "net_rating",
+      "oreb_pct",
+      "dreb_pct",
+      "usg_pct",
+      "ts_pct"
+    ],
+    "alias_rules": {
+      "^(player_name|athlete)$": "player_name",
+      "^(team_abbreviation|team)$": "team_abbreviation",
+      "^(age)$": "age",
+      "^(height|player_height)$": "player_height",
+      "^(weight|player_weight)$": "player_weight",
+      "^(college)$": "college",
+      "^(country)$": "country",
+      "^(draft_year)$": "draft_year",
+      "^(points|pts)$": "pts",
+      "^(rebounds|reb)$": "reb",
+      "^(assists|ast)$": "ast",
+      "^(net_rating)$": "net_rating",
+      "^(offensive_rebound_percentage|oreb_pct)$": "oreb_pct",
+      "^(defensive_rebound_percentage|dreb_pct)$": "dreb_pct",
+      "^(usage_percentage|usg_pct)$": "usg_pct",
+      "^(true_shooting_percentage|ts_pct)$": "ts_pct"
+    },
+    "policy": {
+      "strong_keys": [
+        "player_name",
+        "team_abbreviation"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
+  },
+  "dd70b160058e": {
+    "domain": "nba",
+    "keywords": [
+      "NBA",
+      "basketball",
+      "player",
+      "team",
+      "season",
+      "points",
+      "rebounds",
+      "assists",
+      "draft",
+      "rating"
+    ],
+    "feature_sets": [
+      [
+        "player_name",
+        "team_abbreviation",
+        "age",
+        "player_height",
+        "player_weight",
+        "gp",
+        "pts",
+        "reb",
+        "ast",
+        "net_rating",
+        "usg_pct",
+        "ts_pct"
+      ],
+      [
+        "player_name",
+        "team_abbreviation",
+        "college",
+        "draft_year",
+        "draft_round",
+        "draft_number",
+        "oreb_pct",
+        "dreb_pct",
+        "ast_pct",
+        "season"
+      ]
+    ],
+    "join_keys": [
+      "player_name",
+      "team_abbreviation",
+      "season"
+    ],
+    "canonical_order": [
+      "player_name",
+      "team_abbreviation",
+      "season",
+      "age",
+      "player_height",
+      "player_weight",
+      "college",
+      "country",
+      "draft_year",
+      "draft_round",
+      "draft_number",
+      "gp",
+      "pts",
+      "reb",
+      "ast",
+      "net_rating",
+      "oreb_pct",
+      "dreb_pct",
+      "usg_pct",
+      "ts_pct",
+      "ast_pct"
+    ],
+    "alias_rules": {
+      "^(player_name|player|athlete)$": "player_name",
+      "^(team_abbreviation|team|franchise)$": "team_abbreviation",
+      "^(season|season_year)$": "season",
+      "^(age)$": "age",
+      "^(player_height|height)$": "player_height",
+      "^(player_weight|weight)$": "player_weight",
+      "^(college)$": "college",
+      "^(country)$": "country",
+      "^(draft_year)$": "draft_year",
+      "^(draft_round)$": "draft_round",
+      "^(draft_number)$": "draft_number",
+      "^(gp|games_played)$": "gp",
+      "^(pts|points)$": "pts",
+      "^(reb|rebounds)$": "reb",
+      "^(ast|assists)$": "ast",
+      "^(net_rating)$": "net_rating",
+      "^(oreb_pct|offensive_rebound_percentage)$": "oreb_pct",
+      "^(dreb_pct|defensive_rebound_percentage)$": "dreb_pct",
+      "^(usg_pct|usage_percentage)$": "usg_pct",
+      "^(ts_pct|true_shooting_percentage)$": "ts_pct",
+      "^(ast_pct|assist_percentage)$": "ast_pct"
+    },
+    "policy": {
+      "strong_keys": [
+        "player_name",
+        "season"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
+  },
+  "17ba73f8cfd9": {
+    "domain": "movie",
+    "keywords": [
+      "film",
+      "cinema",
+      "actor",
+      "director",
+      "box office",
+      "screenplay",
+      "genre",
+      "release date",
+      "rating"
+    ],
+    "feature_sets": [
+      [
+        "title",
+        "director_name",
+        "release_year",
+        "genre",
+        "rating",
+        "box_office"
+      ],
+      [
+        "movie_title",
+        "actor_names",
+        "year",
+        "duration",
+        "budget",
+        "revenue"
+      ]
+    ],
+    "join_keys": [
+      "movie_id",
+      "title"
+    ],
+    "canonical_order": [
+      "title",
+      "release_year",
+      "director_name",
+      "genre",
+      "actor_names",
+      "rating",
+      "box_office",
+      "budget",
+      "revenue",
+      "duration"
+    ],
+    "alias_rules": {
+      "^(title|movie_title|film_title)$": "title",
+      "^(year|release_year|pub_year|date)$": "release_year",
+      "^(director|director_name)$": "director_name",
+      "^(genre|type|category)$": "genre",
+      "^(actor|actor_name|cast)$": "actor_names",
+      "^(box_office|gross|revenue)$": "box_office",
+      "^(rating|score|review)$": "rating",
+      "^(budget|cost)$": "budget",
+      "^(duration|length|runtime)$": "duration"
+    },
+    "policy": {
+      "strong_keys": [
+        "movie_id",
+        "title"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
+  },
+  "b3eb30326152": {
+    "domain": "mba_admission",
+    "keywords": [
+      "MBA",
+      "admission",
+      "gmat",
+      "application",
+      "student",
+      "profile",
+      "education",
+      "graduate",
+      "business",
+      "enrollment"
+    ],
+    "feature_sets": [
+      [
+        "application_id",
+        "gender",
+        "international",
+        "gpa",
+        "major",
+        "gmat",
+        "admission"
+      ],
+      [
+        "application_id",
+        "race",
+        "work_exp",
+        "work_industry",
+        "gender",
+        "gpa",
+        "international"
+      ],
+      [
+        "application_id",
+        "gmat",
+        "major",
+        "race",
+        "work_exp",
+        "admission",
+        "international",
+        "gpa"
+      ]
+    ],
+    "join_keys": [
+      "application_id"
+    ],
+    "canonical_order": [
+      "application_id",
+      "gender",
+      "international",
+      "gpa",
+      "major",
+      "gmat",
+      "admission",
+      "race",
+      "work_exp",
+      "work_industry"
+    ],
+    "alias_rules": {
+      "^(id|application_id)$": "application_id",
+      "^(gender|sex)$": "gender",
+      "^(intl|international)$": "international",
+      "^(gpa|grade_point_average)$": "gpa",
+      "^(major|field_of_study)$": "major",
+      "^(gmat|gmat_score)$": "gmat",
+      "^(admission|status)$": "admission",
+      "^(race|ethnicity)$": "race",
+      "^(work_exp|experience)$": "work_exp",
+      "^(industry|work_industry|sector)$": "work_industry"
+    },
+    "policy": {
+      "strong_keys": [
+        "application_id"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
   }
 }
