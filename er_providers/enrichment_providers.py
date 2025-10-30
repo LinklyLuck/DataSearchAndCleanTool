@@ -1,16 +1,4 @@
 # enrichment_providers.py — LLM-driven Entity Resolution (ER) ONLY
-"""
-LLM驱动的实体解析(ER)
-
-职责：
-- 实体解析(ER)：识别并合并重复实体
-- MVI已迁移到 mvi_providers/
-
-架构：
-- 使用 entity_tools.LLMEntityResolver 做 ER
-- 不再做 MVI（由 mvi_providers 负责）
-- 完全开放，无硬编码：领域识别、字段选择都使用通用规则或LLM
-"""
 from __future__ import annotations
 from typing import List, Dict, Optional, Any
 import polars as pl
@@ -224,7 +212,7 @@ class LLMERProvider(ERProvider):
         """延迟初始化resolver（需要llm_client）"""
         if self._resolver is None and llm_client is not None:
             try:
-                from entity_tools import LLMEntityResolver
+                from .entity_tools import LLMEntityResolver  # ✅ 加上点号
                 self._resolver = LLMEntityResolver(llm_client)
                 self._llm_client = llm_client
             except ImportError as e:

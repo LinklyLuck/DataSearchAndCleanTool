@@ -8,23 +8,13 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 
-
 class LLMEntityResolver:
-    """
-    LLM驱动的通用实体解析器
-
-    核心创新:
-    1. 零样本: 无需训练数据
-    2. 跨领域: 适用于任何实体类型
-    3. 语义理解: 不只是字符串匹配
-    """
 
     def __init__(self, llm_client, cache=None):
         self.llm = llm_client
         self.cache = cache or {}
-        self.accepted_edges = []   # [(idx1, idx2, confidence)]
-        self.last_key_cols = []    # 记住本次ER识别到的关键列，供DOT标签用
-
+        self.accepted_edges = []  # [(idx1, idx2, confidence)]
+        self.last_key_cols = []  # 记住本次ER识别到的关键列，供DOT标签用
 
     async def resolve(
             self,
@@ -266,6 +256,7 @@ Return ONLY a JSON array of column names:
         """
         核心: 用LLM判断两个实体是否相同
         """
+        import re
 
         # 缓存
         cache_key = f"{hash(str(sorted(entity1.items())))}_{hash(str(sorted(entity2.items())))}"
@@ -287,7 +278,7 @@ Consider variations like:
 - Abbreviations  
 - Different formats
 
-Respond in JSON:
+Respond ONLY with valid JSON (no markdown, no extra text):
 {{"same": true/false, "confidence": 0.0-1.0}}"""
 
         try:
@@ -295,17 +286,64 @@ Respond in JSON:
                 {"role": "user", "content": prompt}
             ])
 
-            result = json.loads(response.strip())
-            same = result["same"]
-            confidence = result["confidence"]
+            # 健壮的 JSON 提取
+            result = self._extract_json_from_response(response)
+
+            same = result.get("same", False)
+            confidence = float(result.get("confidence", 0.0))
 
             self.cache[cache_key] = (same, confidence)
             return same, confidence
 
         except Exception as e:
             print(f"[LLM-ER] Error in are_same_entity: {e}")
+            print(f"[LLM-ER] Response was: {response[:200] if 'response' in locals() else 'N/A'}")
             # 回退: 保守策略
             return False, 0.0
+
+    def _extract_json_from_response(self, text: str) -> dict:
+        """从 LLM 响应中提取 JSON（处理 markdown 代码块等）"""
+        import re
+
+        if not text or not text.strip():
+            raise ValueError("Empty response")
+
+        text = text.strip()
+
+        # 尝试1: 直接解析
+        try:
+            return json.loads(text)
+        except:
+            pass
+
+        # 尝试2: 提取 markdown 代码块中的 JSON
+        # ```json {...} ``` 或 ```{...}```
+        match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except:
+                pass
+
+        # 尝试3: 提取第一个 {...} 块
+        match = re.search(r'\{.*?\}', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except:
+                pass
+
+        # 尝试4: 如果包含 "same" 和 "confidence" 关键字，尝试手动解析
+        if "same" in text.lower() and "confidence" in text.lower():
+            same = "true" in text.lower() or '"same": true' in text.lower()
+
+            # 提取 confidence 数值
+            conf_match = re.search(r'"confidence"\s*:\s*([\d.]+)', text)
+            confidence = float(conf_match.group(1)) if conf_match else (0.5 if same else 0.0)
+
+            return {"same": same, "confidence": confidence}
+
+        raise ValueError(f"Could not extract JSON from response: {text[:200]}")
 
     def merge_entities(
             self,

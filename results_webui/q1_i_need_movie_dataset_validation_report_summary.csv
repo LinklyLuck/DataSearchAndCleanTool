@@ -1,2 +1,0 @@
-report_id,timestamp,query,overall_score,data_quality_score,merge_quality_score,schema_alignment_score,er_enabled,er_dedup_rate,mvi_enabled,mvi_fill_rate,total_rows,total_columns,warnings,errors
-vldb_1761788766,2025-10-29T21:46:06.195321,I need movie dataset,72.5,0.75,1.0,1.0,false,0.0,false,0.0,4803,20,0,0
