@@ -813,5 +813,214 @@
       "same_origin": true,
       "max_blowup_ratio": 1.8
     }
+  },
+  "faf173bf7156": {
+    "domain": "nba",
+    "keywords": [
+      "NBA",
+      "basketball",
+      "player statistics",
+      "team performance",
+      "draft",
+      "season stats",
+      "basketball players",
+      "NBA teams",
+      "basketball analytics",
+      "player metrics"
+    ],
+    "feature_sets": [
+      [
+        "player_name",
+        "team_abbreviation",
+        "age",
+        "player_height",
+        "player_weight",
+        "college",
+        "country",
+        "draft_year",
+        "pts",
+        "reb",
+        "ast"
+      ],
+      [
+        "player_name",
+        "team_abbreviation",
+        "season",
+        "gp",
+        "net_rating",
+        "oreb_pct",
+        "dreb_pct",
+        "usg_pct",
+        "ts_pct",
+        "draft_round",
+        "draft_number"
+      ],
+      [
+        "player_name",
+        "team_abbreviation",
+        "age",
+        "college",
+        "country",
+        "draft_year",
+        "gp",
+        "pts",
+        "reb",
+        "ast",
+        "season"
+      ]
+    ],
+    "join_keys": [
+      "player_name",
+      "team_abbreviation",
+      "season"
+    ],
+    "canonical_order": [
+      "player_name",
+      "team_abbreviation",
+      "age",
+      "player_height",
+      "player_weight",
+      "college",
+      "country",
+      "draft_year",
+      "draft_round",
+      "draft_number",
+      "season",
+      "gp",
+      "pts",
+      "reb",
+      "ast",
+      "net_rating",
+      "oreb_pct",
+      "dreb_pct",
+      "usg_pct",
+      "ts_pct"
+    ],
+    "alias_rules": {
+      "^(player|player_name|athlete)$": "player_name",
+      "^(team|team_name|franchise|team_abbreviation)$": "team_abbreviation",
+      "^(age|player_age)$": "age",
+      "^(height|player_height)$": "player_height",
+      "^(weight|player_weight)$": "player_weight",
+      "^(college|college_name)$": "college",
+      "^(country|nation)$": "country",
+      "^(draft_year|year_drafted)$": "draft_year",
+      "^(draft_round|round)$": "draft_round",
+      "^(draft_number|pick_number)$": "draft_number",
+      "^(season|season_year)$": "season",
+      "^(games_played|gp)$": "gp",
+      "^(points|pts|points_scored)$": "pts",
+      "^(rebounds|reb)$": "reb",
+      "^(assists|ast)$": "ast",
+      "^(net_rating|rating)$": "net_rating",
+      "^(offensive_rebound_percentage|oreb_pct)$": "oreb_pct",
+      "^(defensive_rebound_percentage|dreb_pct)$": "dreb_pct",
+      "^(usage_percentage|usg_pct)$": "usg_pct",
+      "^(true_shooting_percentage|ts_pct)$": "ts_pct"
+    },
+    "policy": {
+      "strong_keys": [
+        "player_name",
+        "team_abbreviation"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
+  },
+  "00199aec53c7": {
+    "domain": "cat",
+    "keywords": [
+      "cat",
+      "breed",
+      "fur",
+      "age",
+      "weight",
+      "eye color",
+      "body length",
+      "outdoor",
+      "neutered",
+      "spayed"
+    ],
+    "feature_sets": [
+      [
+        "Breed",
+        "Age_in_years",
+        "Gender",
+        "Body_length",
+        "Weight",
+        "Eye_colour",
+        "Neutered_or_spayed",
+        "Fur_colour_dominant",
+        "Fur_pattern",
+        "Allowed_outdoor",
+        "Country",
+        "Sleep_time_hours"
+      ],
+      [
+        "Breed",
+        "Age_in_months",
+        "Gender",
+        "Owner_play_time_minutes",
+        "Preferred_food",
+        "Fur_colour_dominant",
+        "Fur_pattern",
+        "Eye_colour",
+        "Latitude",
+        "Longitude",
+        "Neutered_or_spayed",
+        "Body_length"
+      ]
+    ],
+    "join_keys": [
+      "Breed",
+      "Country"
+    ],
+    "canonical_order": [
+      "Breed",
+      "Age_in_years",
+      "Age_in_months",
+      "Gender",
+      "Neutered_or_spayed",
+      "Body_length",
+      "Weight",
+      "Fur_colour_dominant",
+      "Fur_pattern",
+      "Eye_colour",
+      "Allowed_outdoor",
+      "Preferred_food",
+      "Owner_play_time_minutes",
+      "Sleep_time_hours",
+      "Country",
+      "Latitude",
+      "Longitude"
+    ],
+    "alias_rules": {
+      "^(breed|cat_breed)$": "Breed",
+      "^(age_in_years|years_old|cat_age)$": "Age_in_years",
+      "^(age_in_months|months_old)$": "Age_in_months",
+      "^(gender|sex)$": "Gender",
+      "^(neutered_or_spayed|fixed)$": "Neutered_or_spayed",
+      "^(body_length|length)$": "Body_length",
+      "^(weight|mass)$": "Weight",
+      "^(fur_colour_dominant|fur color|color)$": "Fur_colour_dominant",
+      "^(fur_pattern|pattern)$": "Fur_pattern",
+      "^(eye_colour|eye_color|eyes)$": "Eye_colour",
+      "^(allowed_outdoor|outdoor)$": "Allowed_outdoor",
+      "^(preferred_food|food)$": "Preferred_food",
+      "^(owner_play_time_minutes|play_time)$": "Owner_play_time_minutes",
+      "^(sleep_time_hours|sleep_time)$": "Sleep_time_hours",
+      "^(country|nation)$": "Country",
+      "^(latitude|lat)$": "Latitude",
+      "^(longitude|long)$": "Longitude"
+    },
+    "policy": {
+      "strong_keys": [
+        "Breed"
+      ],
+      "join_min_keys": 2,
+      "same_origin": true,
+      "max_blowup_ratio": 1.8
+    }
   }
 }

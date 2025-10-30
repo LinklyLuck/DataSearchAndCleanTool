@@ -113,7 +113,7 @@ if perform_cleaning:
     validate_cols = []
 
     if up_clean is not None:
-        import polars as pl, csv
+        import polars as pl, csv, re
 
         NULLS = ["", "NA", "NaN", "N/A", "null", "None", "\\N", "nan", "Null"]
 
@@ -188,14 +188,56 @@ if perform_cleaning:
         try:
             df_u = _read_any_upload(up_clean)
 
-            # 标题列识别/展示
-            title_candidates = [c for c in df_u.columns if "title" in c.lower()]
-            title_col = title_candidates[0] if title_candidates else st.selectbox("Select title column", df_u.columns,
-                                                                                  key="title_col_sel")
-            if not title_candidates:
-                st.info("未自动识别到含 'title' 的列，请手动选择。")
+            # 标题列识别/展示（更智能 + 轻清洗）
+            # 1) 先根据列名同义词自动识别
+            name_like = re.compile(r'(title|original_title|movie[_ ]?title|film[_ ]?title|name)', re.I)
+            by_name = [c for c in df_u.columns if name_like.search(c)]
+            title_guess = by_name[0] if by_name else None
 
-            titles = df_u[title_col].unique().to_series().to_list()
+            # 2) 若未匹配到，根据“字符串列的唯一值占比”启发式选择
+            if title_guess is None:
+                str_cols = []
+                for c, dt in zip(df_u.columns, df_u.dtypes):
+                    if str(dt).lower().endswith('utf8') or 'string' in str(dt).lower():
+                        str_cols.append(c)
+                best = None
+                best_score = -1.0
+                for c in str_cols or df_u.columns:
+                    s = df_u[c].cast(pl.Utf8, strict=False)
+                    n = len(s)
+                    if n == 0:
+                        continue
+                    try:
+                        uniq = s.drop_nulls().n_unique()
+                    except Exception:
+                        uniq = len(set([x for x in s.to_list() if x is not None]))
+                    score = (uniq / n)  # 唯一占比越高越像“标题”
+                    if score > best_score:
+                        best_score = score
+                        best = c
+                title_guess = best or df_u.columns[0]
+
+            # 3) 允许用户改选，默认高亮自动识别的列
+            title_col = st.selectbox(
+                "Select title column",
+                options=df_u.columns,
+                index=list(df_u.columns).index(title_guess) if title_guess in df_u.columns else 0,
+                key="title_col_sel"
+            )
+
+            # 4) 轻清洗：转字符串、去首尾空白、空白 -> NA、去重（保持顺序）
+            s = df_u[title_col].cast(pl.Utf8, strict=False)
+            try:
+                s = s.str.strip_chars()
+            except Exception:
+                # 旧版本 Polars 兼容
+                s = s.str.strip()
+            try:
+                s = s.map_elements(lambda x: None if (x is None or (isinstance(x, str) and x.strip() == '')) else x)
+            except Exception:
+                pass
+            titles = s.drop_nulls().unique(maintain_order=True).to_list()
+
             uploaded_titles = titles
             st.write(f"🔎 Found {len(titles)} unique titles from `{title_col}`")
             st.dataframe(pl.DataFrame({title_col: titles}).head(200))
