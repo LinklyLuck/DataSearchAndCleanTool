@@ -42,13 +42,13 @@ cleaning_mode = st.sidebar.selectbox(
     index=0,  # 默认 ultra
     disabled=not perform_cleaning,
     help=(
-        "• ultra: 终极加速（默认）- 规则优先+微批LLM+缓存，速度和质量兼顾\n"
-        +
-        "• hybrid: 混合清洗（推荐）- 速度快3-10倍，准确性高\n"
-        "• fast: 超快规则清洗 - 速度快10-20倍，适合简单数据\n"
-        "• batch: 批量LLM清洗 - 速度快3-5倍，准确性更高\n"
-        "• comprehensive: 综合清洗 - 最准确但较慢\n"
-        "• type: 仅类型清洗 - 快速基础清洗"
+            "• ultra: 终极加速（默认）- 规则优先+微批LLM+缓存，速度和质量兼顾\n"
+            +
+            "• hybrid: 混合清洗（推荐）- 速度快3-10倍，准确性高\n"
+            "• fast: 超快规则清洗 - 速度快10-20倍，适合简单数据\n"
+            "• batch: 批量LLM清洗 - 速度快3-5倍，准确性更高\n"
+            "• comprehensive: 综合清洗 - 最准确但较慢\n"
+            "• type: 仅类型清洗 - 快速基础清洗"
     )
 )
 
@@ -66,6 +66,13 @@ validation_cols_text = st.sidebar.text_input(
 )
 
 validation_columns = None
+# --- Post-clean export (6-step) ---
+export_postclean6 = st.sidebar.checkbox("Export production-ready tables (6-step)", value=True)
+postclean_outdir_ui = st.sidebar.text_input(
+    "Post-clean output dir (optional)",
+    value="",
+    help="留空则由管道在输出文件旁生成 <out_stem>_postclean/"
+)
 if perform_cleaning:
     cols = [c.strip() for c in validation_cols_text.split(",") if c.strip()]
     validation_columns = cols if cols else None
@@ -95,12 +102,12 @@ extra_lines = [q.strip() for q in text_queries.splitlines() if q.strip()]
 queries.extend(extra_lines)
 queries = [q for q in queries if q]
 
-
 # ---------------------- (NEW) Validate Uploaded Cleaned Dataset ----------------------
 if perform_cleaning:
     st.subheader("🔍 Validate a cleaned dataset (optional)")
     st.caption("当你完成一次清洗并下载了结果后，可在此上传该 **清洗后的数据集** 来做**选择列的外部验证**。")
-    up_clean = st.file_uploader("Upload cleaned dataset for validation", type=["csv","parquet"], key="upload_cleaned_for_validation")
+    up_clean = st.file_uploader("Upload cleaned dataset for validation", type=["csv", "parquet"],
+                                key="upload_cleaned_for_validation")
     validation_source = st.selectbox("Validation source", ["wikipedia", "tmdb", "omdb"], index=0, key="val_src_sel")
     uploaded_titles = []
     validate_cols = []
@@ -109,6 +116,7 @@ if perform_cleaning:
         import polars as pl, csv
 
         NULLS = ["", "NA", "NaN", "N/A", "null", "None", "\\N", "nan", "Null"]
+
 
         def _read_any_upload(f):
             name = (getattr(f, "name", "") or "").lower()
@@ -176,12 +184,14 @@ if perform_cleaning:
                 pass
             return pl.read_csv(f, null_values=NULLS, ignore_errors=True)
 
+
         try:
             df_u = _read_any_upload(up_clean)
 
             # 标题列识别/展示
             title_candidates = [c for c in df_u.columns if "title" in c.lower()]
-            title_col = title_candidates[0] if title_candidates else st.selectbox("Select title column", df_u.columns, key="title_col_sel")
+            title_col = title_candidates[0] if title_candidates else st.selectbox("Select title column", df_u.columns,
+                                                                                  key="title_col_sel")
             if not title_candidates:
                 st.info("未自动识别到含 'title' 的列，请手动选择。")
 
@@ -192,10 +202,12 @@ if perform_cleaning:
 
             # 选择需要外部验证的列
             options_cols = [c for c in df_u.columns if c != title_col]
-            validate_cols = st.multiselect("Select columns to validate via external APIs", options=options_cols, default=[], key="val_cols_sel")
+            validate_cols = st.multiselect("Select columns to validate via external APIs", options=options_cols,
+                                           default=[], key="val_cols_sel")
 
             # 触发仅验证流程（写 cfg -> 子进程）
-            if st.button("Run validation on uploaded cleaned dataset", key="btn_run_validation_uploaded") and validate_cols:
+            if st.button("Run validation on uploaded cleaned dataset",
+                         key="btn_run_validation_uploaded") and validate_cols:
                 tmp_in = RESULTS_DIR / "uploaded_clean_for_validation.csv"
                 df_u.write_csv(tmp_in)
                 out_csv_val = RESULTS_DIR / "uploaded_clean_validated.csv"
@@ -244,7 +256,8 @@ if perform_cleaning:
                 )
                 if proc2.returncode == 0 and out_csv_val.exists():
                     st.success(f"Validation finished. Download: {out_csv_val.name}")
-                    st.download_button("⬇️ Download validated CSV", data=out_csv_val.read_bytes(), file_name=out_csv_val.name, mime="text/csv")
+                    st.download_button("⬇️ Download validated CSV", data=out_csv_val.read_bytes(),
+                                       file_name=out_csv_val.name, mime="text/csv")
                 else:
                     st.error("Validation failed. Check logs below.")
                     st.code(proc2.stdout + "\n---\n" + proc2.stderr)
@@ -323,6 +336,13 @@ def run_one_query(idx: int, question: str) -> dict:
             "enable_cleaning": False,
             "enable_validation": False,
         })
+
+    # Post-clean config (6-step)
+    cfg.update({
+        "enable_postclean6": bool(export_postclean6),
+    })
+    if export_postclean6 and postclean_outdir_ui.strip():
+        cfg.update({"postclean_outdir": postclean_outdir_ui.strip()})
 
     cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
