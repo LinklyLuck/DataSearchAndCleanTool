@@ -8,6 +8,7 @@ from typing import List, Dict, Optional, Tuple, Any
 import httpx
 import polars as pl
 from tqdm.asyncio import tqdm_asyncio
+from cleaning_providers.post_cleaner import PostCleaner
 
 # ===== Template驱动的智能Schema映射（新增）=====
 try:
