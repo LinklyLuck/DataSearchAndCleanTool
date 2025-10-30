@@ -20,17 +20,17 @@ class LLMEntityResolver:
             self,
             df: pl.DataFrame,
             entity_type: str = "entity",
-            max_comparisons: int = 500,
+            max_comparisons: int = 200,  # ← 优化：从 500 减少到 200
             confidence_threshold: float = 0.8
     ) -> Tuple[pl.DataFrame, pl.DataFrame]:
         """
-        主入口: 对数据集进行实体解析
+        主入口: 对数据集进行实体解析（优化版：更快的默认参数）
 
         Args:
             df: 输入数据
             entity_type: 实体类型描述 (如 "movie", "product")
-            max_comparisons: 最大LLM比较次数
-            confidence_threshold: 合并阈值
+            max_comparisons: 最大LLM比较次数（默认 200，降低以提升速度）
+            confidence_threshold: 合并阈值（默认 0.8）
 
         Returns:
             (resolved_df, report_df)
@@ -47,6 +47,11 @@ class LLMEntityResolver:
         print("[LLM-ER] Step 2: Generating candidate pairs...")
         candidates = self.generate_candidates(df, key_cols, max_comparisons)
         print(f"[LLM-ER] Found {len(candidates)} candidate pairs")
+
+        # ← 优化：如果候选对太多，发出警告并建议减少
+        if len(candidates) > 100:
+            print(f"[LLM-ER] ⚠️  Large number of candidates ({len(candidates)}) may slow down execution")
+            print(f"[LLM-ER] 💡 Tip: Set ER_ENABLED=0 or reduce sample_n to speed up")
 
         # Step 3: LLM判断
         print("[LLM-ER] Step 3: LLM-based comparison...")
@@ -109,7 +114,8 @@ Return ONLY a JSON array of column names:
                 {"role": "user", "content": prompt}
             ])
 
-            key_cols = json.loads(response.strip())
+            # 使用健壮的JSON提取方法（与are_same_entity一致）
+            key_cols = self._extract_json_list_from_response(response)
 
             # 验证列名
             key_cols = [c for c in key_cols if c in df.columns]
@@ -127,6 +133,58 @@ Return ONLY a JSON array of column names:
             # 回退策略
             return [c for c in df.columns if df[c].dtype == pl.Utf8][:1]
 
+    def _extract_json_list_from_response(self, text: str) -> list:
+        """从 LLM 响应中提取 JSON 数组（处理 markdown 代码块等）"""
+        import re
+
+        if not text or not text.strip():
+            raise ValueError("Empty response")
+
+        text = text.strip()
+
+        # 尝试1: 直接解析
+        try:
+            result = json.loads(text)
+            if isinstance(result, list):
+                return result
+            # 如果是字典但有数组字段，尝试提取
+            if isinstance(result, dict):
+                for key in ['columns', 'key_columns', 'identifiers', 'fields']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+        except:
+            pass
+
+        # 尝试2: 提取 markdown 代码块中的 JSON
+        # ```json [...] ``` 或 ```[...]```
+        match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except:
+                pass
+
+        # 尝试3: 提取第一个 [...] 块
+        match = re.search(r'\[.*?\]', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except:
+                pass
+
+        # 尝试4: 如果包含列名关键字，尝试手动解析
+        # 匹配 "col1", "col2", "col3" 这样的模式
+        matches = re.findall(r'"([^"]+)"', text)
+        if matches:
+            return matches
+
+        # 尝试5: 匹配单引号
+        matches = re.findall(r"'([^']+)'", text)
+        if matches:
+            return matches
+
+        raise ValueError(f"Could not extract JSON array from response: {text[:200]}")
+
     def generate_candidates(
             self,
             df: pl.DataFrame,
@@ -134,12 +192,13 @@ Return ONLY a JSON array of column names:
             max_pairs: int
     ) -> List[Tuple[int, int]]:
         """
-        生成候选重复对
+        生成候选重复对（优化版：减少LLM调用）
 
         策略:
         1. Blocking by first character
-        2. 组内简单相似度过滤
-        3. 限制总数
+        2. 提高相似度阈值（0.5 → 0.7）
+        3. 严格限制组内比较数量
+        4. 限制总候选对数量
         """
 
         if not key_cols:
@@ -150,9 +209,10 @@ Return ONLY a JSON array of column names:
 
         # Blocking: 按首字母分组
         try:
-            # 添加首字母列
+            # 添加首字母列（先转换为字符串处理数值列）
             df_with_block = df.with_columns([
                 pl.col(primary_col)
+                .cast(pl.Utf8)  # ← 修复：先转换为字符串
                 .str.slice(0, 1)
                 .str.to_lowercase()
                 .alias("_block_key")
@@ -165,25 +225,29 @@ Return ONLY a JSON array of column names:
 
                 indices = group_df.select(pl.arange(0, pl.count()).alias("idx"))["idx"].to_list()
 
-                # 组内两两比较（限制数量）
+                # 组内两两比较（严格限制数量）
                 for i, idx1 in enumerate(indices):
-                    for idx2 in indices[i + 1:i + 11]:  # 最多10个
-                        # 简单预筛选
+                    # ← 优化：每个元素最多比较 5 个（之前是 10 个）
+                    for idx2 in indices[i + 1:min(i + 6, len(indices))]:
+                        # 简单预筛选（提高阈值）
                         val1 = str(df[primary_col][idx1] or "")
                         val2 = str(df[primary_col][idx2] or "")
 
-                        if self.quick_similarity(val1, val2) > 0.5:
+                        # ← 优化：提高相似度阈值 0.5 → 0.7
+                        if self.quick_similarity(val1, val2) > 0.7:
                             candidates.append((idx1, idx2))
 
+                        # ← 优化：更早退出
                         if len(candidates) >= max_pairs:
+                            print(f"[LLM-ER] Reached max_pairs limit: {max_pairs}")
                             return candidates[:max_pairs]
 
         except Exception as e:
             print(f"[LLM-ER] Error in generate_candidates: {e}")
-            # 回退: 随机采样
-            n = min(len(df), 100)
+            # 回退: 更保守的采样
+            n = min(len(df), 50)  # ← 优化：从 100 减少到 50
             for i in range(n):
-                for j in range(i + 1, min(i + 6, n)):
+                for j in range(i + 1, min(i + 4, n)):  # ← 优化：从 6 减少到 4
                     candidates.append((i, j))
 
         return candidates[:max_pairs]

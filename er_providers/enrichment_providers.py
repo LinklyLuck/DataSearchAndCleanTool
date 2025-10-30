@@ -125,9 +125,9 @@ Response format: Just return the single word, nothing else.
 Domain:"""
 
     try:
-        # 调用LLM
+        # 调用LLM - 修复：添加 model 参数，移除不支持的参数
         messages = [{"role": "user", "content": prompt}]
-        response = await llm_client.chat(messages, max_tokens=20, temperature=0)
+        response = await llm_client.chat("gpt-4o-mini", messages)
 
         # 提取领域名称
         domain = response.strip().lower()
@@ -212,7 +212,7 @@ class LLMERProvider(ERProvider):
         """延迟初始化resolver（需要llm_client）"""
         if self._resolver is None and llm_client is not None:
             try:
-                from .entity_tools import LLMEntityResolver  # ✅ 加上点号
+                from .entity_tools import LLMEntityResolver
                 self._resolver = LLMEntityResolver(llm_client)
                 self._llm_client = llm_client
             except ImportError as e:
@@ -224,16 +224,21 @@ class LLMERProvider(ERProvider):
             rows: List[Dict[str, Any]],
             primary_keys: List[str],
             entity_type: str = "entity",
-            max_comparisons: int = 500,
-            confidence_threshold: float = 0.75
+            max_comparisons: int = 100,  # ← 优化：从 500 减少到 100（快 5 倍）
+            confidence_threshold: float = 0.8  # ← 优化：从 0.75 提高到 0.8（更严格，更少合并）
     ) -> tuple[List[Dict[str, Any]], Optional[List[Dict[str, Any]]]]:
         """
-        使用LLM进行实体解析
+        使用LLM进行实体解析（优化版：更快的默认参数）
 
         流程：
         1. 转换为Polars DataFrame
         2. 调用LLMEntityResolver进行ER
         3. 转回Dict列表
+
+        性能提示：
+        - max_comparisons=100: 快速模式（推荐）
+        - max_comparisons=200: 平衡模式
+        - max_comparisons=500: 完整模式（慢）
         """
         if not rows:
             return rows, None
@@ -260,6 +265,7 @@ class LLMERProvider(ERProvider):
 
             # 3. 执行ER（实体解析 - 合并重复实体）
             print(f"[LLM-ER] Running entity resolution for '{entity_type}' entities...")
+            print(f"[LLM-ER] 💡 Performance: max_comparisons={max_comparisons}, threshold={confidence_threshold}")
 
             resolved_df, report_df = await self._resolver.resolve(
                 df=df,
@@ -270,6 +276,8 @@ class LLMERProvider(ERProvider):
 
             if len(resolved_df) < len(df):
                 print(f"[LLM-ER] ✓ Merged {len(df)} → {len(resolved_df)} rows")
+            else:
+                print(f"[LLM-ER] ✓ No duplicates found (or below confidence threshold)")
 
             # 4. 转回Dict
             resolved_rows = resolved_df.to_dicts()
