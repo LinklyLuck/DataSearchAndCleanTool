@@ -1,15 +1,4 @@
 # cleaning_providers/batch_llm_cleaner.py
-"""
-BatchLLMCleaningProvider - 批量 LLM 清洗器
-
-性能优化：
-- 批量分析：一次 LLM 请求分析多列（5-10 列）
-- 智能采样：减少采样行数（20 行而非 50 行）
-- 并发执行：多批次并发处理
-- 智能过滤：只对复杂列使用 LLM
-
-性能：比原版快 3-5 倍
-"""
 from __future__ import annotations
 import json
 import asyncio
@@ -21,8 +10,6 @@ from .base import CleaningProvider, CleaningReport
 class BatchLLMCleaningProvider(CleaningProvider):
     """
     批量 LLM 清洗器
-
-    创新点：
     1. 批量分析：一次请求分析 5-10 列
     2. 智能筛选：跳过简单列（类型一致、格式标准）
     3. 减少采样：20 行而非 50 行

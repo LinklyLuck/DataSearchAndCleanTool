@@ -32,19 +32,18 @@ omdb_key = st.sidebar.text_input("OMDb API Key (OMDB_API_KEY)", type="password",
 tmdb_key = st.sidebar.text_input("TMDb API Key (TMDB_API_KEY)", type="password", value=os.getenv("TMDB_API_KEY", ""))
 
 # ---------------------- Sidebar: Cleaning & Validation ----------------------
-# app.py 的修改部分（只显示需要修改的部分）
-
-# ---------------------- Sidebar: Cleaning & Validation ----------------------
 st.sidebar.header("🧽 Cleaning & Validation")
 perform_cleaning = st.sidebar.checkbox("Enable data cleaning & external validation", value=False)
 
 # 修改清洗模式选项，添加 fast 和 hybrid
 cleaning_mode = st.sidebar.selectbox(
     "Cleaning mode",
-    options=["hybrid", "fast", "batch", "comprehensive", "type"],  # 重新排序，hybrid 优先
-    index=0,  # 默认 hybrid
+    options=["ultra", "hybrid", "fast", "batch", "comprehensive", "type"],  # 重新排序，hybrid 优先
+    index=0,  # 默认 ultra
     disabled=not perform_cleaning,
     help=(
+        "• ultra: 终极加速（默认）- 规则优先+微批LLM+缓存，速度和质量兼顾\n"
+        +
         "• hybrid: 混合清洗（推荐）- 速度快3-10倍，准确性高\n"
         "• fast: 超快规则清洗 - 速度快10-20倍，适合简单数据\n"
         "• batch: 批量LLM清洗 - 速度快3-5倍，准确性更高\n"
@@ -96,6 +95,161 @@ extra_lines = [q.strip() for q in text_queries.splitlines() if q.strip()]
 queries.extend(extra_lines)
 queries = [q for q in queries if q]
 
+
+# ---------------------- (NEW) Validate Uploaded Cleaned Dataset ----------------------
+if perform_cleaning:
+    st.subheader("🔍 Validate a cleaned dataset (optional)")
+    st.caption("当你完成一次清洗并下载了结果后，可在此上传该 **清洗后的数据集** 来做**选择列的外部验证**。")
+    up_clean = st.file_uploader("Upload cleaned dataset for validation", type=["csv","parquet"], key="upload_cleaned_for_validation")
+    validation_source = st.selectbox("Validation source", ["wikipedia", "tmdb", "omdb"], index=0, key="val_src_sel")
+    uploaded_titles = []
+    validate_cols = []
+
+    if up_clean is not None:
+        import polars as pl, csv
+
+        NULLS = ["", "NA", "NaN", "N/A", "null", "None", "\\N", "nan", "Null"]
+
+        def _read_any_upload(f):
+            name = (getattr(f, "name", "") or "").lower()
+            # Parquet
+            if name.endswith(".parquet") or name.endswith(".pq"):
+                return pl.read_parquet(f)
+            # CSV/TSV (robust)
+            if name.endswith(".csv") or name.endswith(".tsv"):
+                sep = "," if name.endswith(".csv") else "\t"
+                try:
+                    f.seek(0)
+                except Exception:
+                    pass
+                try:
+                    return pl.read_csv(
+                        f, separator=sep,
+                        null_values=NULLS,
+                        infer_schema_length=200_000,
+                        try_parse_dates=True,
+                        ignore_errors=True,
+                    )
+                except Exception:
+                    try:
+                        # fallback: all string
+                        try:
+                            f.seek(0)
+                        except Exception:
+                            pass
+                        return pl.read_csv(
+                            f, separator=sep, dtypes=pl.Utf8,
+                            null_values=NULLS, ignore_errors=True
+                        )
+                    except Exception:
+                        try:
+                            f.seek(0)
+                        except Exception:
+                            pass
+                        txt_data = f.read()
+                        if isinstance(txt_data, (bytes, bytearray)):
+                            txt_data = txt_data.decode("utf-8", errors="ignore")
+                        rows = list(csv.reader(txt_data.splitlines()))
+                        if not rows:
+                            raise ValueError("Empty file")
+                        header = rows[0]
+                        data = [dict(zip(header, r)) for r in rows[1:] if r]
+                        return pl.from_dicts(data)
+            # JSON/NDJSON
+            if name.endswith(".jsonl") or name.endswith(".ndjson"):
+                try:
+                    f.seek(0)
+                except Exception:
+                    pass
+                try:
+                    return pl.read_ndjson(f)
+                except Exception:
+                    try:
+                        f.seek(0)
+                    except Exception:
+                        pass
+                    return pl.read_json(f)
+            # Unknown -> try CSV with safe defaults
+            try:
+                f.seek(0)
+            except Exception:
+                pass
+            return pl.read_csv(f, null_values=NULLS, ignore_errors=True)
+
+        try:
+            df_u = _read_any_upload(up_clean)
+
+            # 标题列识别/展示
+            title_candidates = [c for c in df_u.columns if "title" in c.lower()]
+            title_col = title_candidates[0] if title_candidates else st.selectbox("Select title column", df_u.columns, key="title_col_sel")
+            if not title_candidates:
+                st.info("未自动识别到含 'title' 的列，请手动选择。")
+
+            titles = df_u[title_col].unique().to_series().to_list()
+            uploaded_titles = titles
+            st.write(f"🔎 Found {len(titles)} unique titles from `{title_col}`")
+            st.dataframe(pl.DataFrame({title_col: titles}).head(200))
+
+            # 选择需要外部验证的列
+            options_cols = [c for c in df_u.columns if c != title_col]
+            validate_cols = st.multiselect("Select columns to validate via external APIs", options=options_cols, default=[], key="val_cols_sel")
+
+            # 触发仅验证流程（写 cfg -> 子进程）
+            if st.button("Run validation on uploaded cleaned dataset", key="btn_run_validation_uploaded") and validate_cols:
+                tmp_in = RESULTS_DIR / "uploaded_clean_for_validation.csv"
+                df_u.write_csv(tmp_in)
+                out_csv_val = RESULTS_DIR / "uploaded_clean_validated.csv"
+                cfg_val = {
+                    "question": "validate uploaded cleaned dataset",
+                    "datasets": [],
+                    "out": str(out_csv_val),
+                    "graph_out": "",
+                    "left_model": model,
+                    "map_model": model,
+                    "join_model": model,
+                    "max_concurrency": int(max_conc),
+                    "api_base": api_base,
+                    "api_key": api_key or os.getenv("GPTNB_API_KEY", ""),
+                    "enable_cleaning": False,
+                    "enable_validation": True,
+                    "validation_only": True,
+                    "validation_input": str(tmp_in),
+                    "validation_source": validation_source,
+                    "validation_columns": validate_cols,
+                    "validation_api_keys": {
+                        k: v for k, v in {
+                            "tmdb": tmdb_key,
+                            "omdb": omdb_key,
+                        }.items() if v
+                    }
+                }
+                cfg_val_path = RESULTS_DIR / "uploaded_clean_validation_config.json"
+                cfg_val_path.write_text(json.dumps(cfg_val, ensure_ascii=False, indent=2), encoding="utf-8")
+
+                # 运行 pipeline 的验证专用分支
+                env_for_child = dict(os.environ)
+                if api_key: env_for_child["GPTNB_API_KEY"] = api_key
+                if k_user: env_for_child["KAGGLE_USERNAME"] = k_user
+                if k_key:  env_for_child["KAGGLE_KEY"] = k_key
+                if omdb_key: env_for_child["OMDB_API_KEY"] = omdb_key
+                if tmdb_key: env_for_child["TMDB_API_KEY"] = tmdb_key
+                env_for_child["PYTHONIOENCODING"] = "utf-8"
+                env_for_child.setdefault("LC_ALL", "C.UTF-8")
+                env_for_child.setdefault("LANG", "C.UTF-8")
+                env_for_child.setdefault("UTF8", "1")
+
+                proc2 = subprocess.run(
+                    [sys.executable, str(PIPELINE), str(cfg_val_path)],
+                    capture_output=True, text=True, env=env_for_child, encoding="utf-8", errors="replace"
+                )
+                if proc2.returncode == 0 and out_csv_val.exists():
+                    st.success(f"Validation finished. Download: {out_csv_val.name}")
+                    st.download_button("⬇️ Download validated CSV", data=out_csv_val.read_bytes(), file_name=out_csv_val.name, mime="text/csv")
+                else:
+                    st.error("Validation failed. Check logs below.")
+                    st.code(proc2.stdout + "\n---\n" + proc2.stderr)
+        except Exception as e:
+            st.error(f"Failed to read uploaded file: {e}")
 # ---------------------- Upload Data (Optional) ----------------------
 st.subheader("📂 Upload Data (Optional)")
 st.caption(
@@ -154,7 +308,7 @@ def run_one_query(idx: int, question: str) -> dict:
         cfg.update({
             "enable_cleaning": True,
             "cleaning_mode": cleaning_mode,
-            "enable_validation": True,
+            "enable_validation": False,  # decouple: cleaning only in main run
             "validation_source": validation_source,
             "validation_columns": validation_columns,
             "validation_api_keys": {
@@ -174,19 +328,25 @@ def run_one_query(idx: int, question: str) -> dict:
 
     # Build subprocess environment: LLM + external enhancement
     env_for_child = os.environ.copy()
-    if api_key:
-        env_for_child["GPTNB_API_KEY"] = api_key
+    # Force UTF-8 console/logging in child process (Windows-safe)
+    env_for_child["PYTHONIOENCODING"] = "utf-8"
+    env_for_child.setdefault("LC_ALL", "C.UTF-8")
+    env_for_child.setdefault("LANG", "C.UTF-8")
+    env_for_child.setdefault("UTF8", "1")
+    if api_key: env_for_child["GPTNB_API_KEY"] = api_key
     if k_user: env_for_child["KAGGLE_USERNAME"] = k_user
     if k_key:  env_for_child["KAGGLE_KEY"] = k_key
     if omdb_key: env_for_child["OMDB_API_KEY"] = omdb_key
     if tmdb_key: env_for_child["TMDB_API_KEY"] = tmdb_key
 
     # Run main pipeline
+
     t0 = time.time()
     proc = subprocess.run(
         [sys.executable, str(PIPELINE), str(cfg_path)],
         capture_output=True,
         text=True,
+        encoding="utf-8", errors="replace",
         env=env_for_child,
         cwd=str(ROOT),
     )
@@ -473,13 +633,3 @@ if run:
         for p in RESULTS_DIR.glob("*"):
             if p.is_file():
                 zf.write(p, arcname=p.name)
-
-    st.success("🎉 All queries completed!")
-    st.download_button(
-        "📦 Download All Results (ZIP)",
-        data=buf.getvalue(),
-        file_name="results_webui.zip",
-        mime="application/zip"
-    )
-else:
-    st.info("Fill in queries above and click **Start Processing**.")

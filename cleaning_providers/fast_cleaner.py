@@ -1,8 +1,5 @@
 # cleaning_providers/fast_cleaner.py
 """
-FastCleaningProvider - 超快速数据清洗（无 LLM）
-
-性能优化：
 - 纯规则引擎，无 LLM 调用
 - 向量化操作（Polars 原生）
 - 并行处理（多列同时清洗）
@@ -18,14 +15,11 @@ from .base import CleaningProvider, CleaningReport
 class FastCleaningProvider(CleaningProvider):
     """
     快速清洗器 - 基于规则引擎
-
     清洗策略：
     1. 类型修正（数值列、日期列、布尔列）
     2. 格式标准化（去空格、统一大小写、标准日期）
     3. 异常值检测（IQR 方法）
     4. 重复值处理
-
-    性能：比 LLM 清洗快 10-20 倍
     """
 
     name = "Fast-Cleaning"
@@ -97,7 +91,7 @@ class FastCleaningProvider(CleaningProvider):
                 try:
                     s_str = s.cast(pl.Utf8)
                     # 尝试转换为数值
-                    numeric_ok = s_str.str.strip().str.replace_all(",", "").str.extract(
+                    numeric_ok = s_str.str.strip_chars().str.replace_all(",", "").str.extract(
                         r"^-?\d+(?:\.\d+)?$").is_not_null()
                     if (numeric_ok | s.is_null()).all():
                         return False  # 所有值都是有效数值
@@ -107,7 +101,7 @@ class FastCleaningProvider(CleaningProvider):
             # 3. 如果是字符串，检查格式一致性
             if df.schema[col] == pl.Utf8:
                 # 检查是否有前后空格
-                s_trimmed = s.str.strip()
+                s_trimmed = s.str.strip_chars()
                 if not (s == s_trimmed).all():
                     return True  # 有空格，需要清洗
 
@@ -166,7 +160,7 @@ class FastCleaningProvider(CleaningProvider):
             s = df[col].cast(pl.Utf8)
 
             # 1. 去除千分位逗号
-            s_clean = s.str.strip().str.replace_all(",", "")
+            s_clean = s.str.strip_chars().str.replace_all(",", "")
 
             # 2. 去除货币符号
             s_clean = s_clean.str.replace_all(r"[$€£¥]", "")
@@ -224,7 +218,7 @@ class FastCleaningProvider(CleaningProvider):
             s = df[col]
 
             # 1. 去除前后空格
-            s_trimmed = s.str.strip()
+            s_trimmed = s.str.strip_chars()
 
             # 2. 统一大小写（如果是枚举类型）
             unique_vals = s.unique().drop_nulls()

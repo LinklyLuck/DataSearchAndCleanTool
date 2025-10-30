@@ -63,8 +63,7 @@
   ],
   "join_keys": [
     "title",
-    "release_date",
-    "movie_id"
+    "release_date"
   ],
   "merge_mode": "universal",
   "safe_inner_snapshot": {

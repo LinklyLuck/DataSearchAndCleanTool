@@ -1,8 +1,5 @@
 # cleaning_providers/ultra_cleaner.py
 """
-UltraCleaningProvider - 终极加速清洗器（比 hybrid 再快 2-5 倍）
-
-设计要点：
 1) 规则优先（fast_cleaner）——向量化覆盖 80% 问题
 2) 列选择器 —— 只对“可疑列”进行 LLM 清洗
 3) 去重 + 频次优先 —— 仅对唯一值进行一次清洗，按出现频次排序
@@ -84,12 +81,7 @@ class _KVCache:
 
 
 class UltraCleaningProvider(CleaningProvider):
-    """
-    终极加速清洗器：
-      - 先跑 FastCleaningProvider（向量化）
-      - 只对“可疑列”的“未被规则修正的唯一值”做 LLM 微批清洗
-      - 强缓存与并行
-    """
+
     name = "Ultra-Cleaning"
 
     def __init__(
@@ -234,7 +226,7 @@ class UltraCleaningProvider(CleaningProvider):
             null_rate = float(s.null_count()) / n
             nunique = int(s.n_unique())
             unique_rate = nunique / n
-            punct_rate = float(s.str.count_match(r"[^0-9A-Za-z\u4e00-\u9fa5 ]").fill_null(0).sum()) / max(1, int(s.str.len_chars().fill_null(0).sum()))
+            punct_rate = float(s.str.count_matches(r"[^0-9A-Za-z\u4e00-\u9fa5 ]").fill_null(0).sum()) / max(1, int(s.str.len_chars().fill_null(0).sum()))
             if unique_rate > 0.02 and punct_rate > 0.02:
                 cols.append(col)
             elif unique_rate > 0.2:

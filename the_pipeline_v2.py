@@ -19,7 +19,7 @@ except ImportError:
     _HAS_TEMPLATE_UTILS = False
     print("[INFO] template_utils not found, using legacy template logic")
 
-# === I/O：Polars 为主，Pandas 仅兜底读取（随后立刻转 Polars）===
+# === I/O：Polars 为主,Pandas 仅兜底读取（随后立刻转 Polars）===
 try:
     import pandas as pd
 
@@ -29,7 +29,7 @@ except ImportError:
 
 
 def _read_any_backend(path: Path) -> pl.DataFrame:
-    """多格式读取器：始终返回 Polars DataFrame；必要时用 pandas 读取后再 pl.from_pandas。"""
+    """多格式读取器：始终返回 Polars DataFrame;必要时用 pandas 读取后再 pl.from_pandas。"""
     suf = path.suffix.lower()
 
     # CSV
@@ -139,7 +139,7 @@ def _expand_globs(patterns: List[str]) -> List[Path]:
 
 def _expand_globs_mixed(patterns: List[str]) -> List[Path]:
     """
-    扫描 datas/、datalake/，如果存在 data/ 则混合加入。
+    扫描 datas/、datalake/,如果存在 data/ 则混合加入。
     """
     base_dirs = ["datas", "datalake"]
     if Path("data").exists():
@@ -358,10 +358,10 @@ class Config:
     cache_path: Path = Path(".llm_cache.sqlite")
     api_base: str = "https://goapi.gptnb.ai/v1/chat/completions"
     api_key: str = ""
-    # 新增：通用合并（保留所有列/行）开关，默认启用，不改变原安全内连接的输出（写入 meta 供审计）
+    # 新增：通用合并（保留所有列/行）开关,默认启用,不改变原安全内连接的输出（写入 meta 供审计）
     universal_merge: bool = True
 
-    # —— 安全模式（可选，不改原逻辑；只是限流避免内存爆）——
+    # —— 安全模式（可选,不改原逻辑;只是限流避免内存爆）——
     max_files: int = 20  # 一次最多合并多少个文件（默认20）
     max_rows_per_file: int = 200_000  # 每个文件最多读取多少行（超出截断）
     filter_by_query_keywords: bool = True  # 根据 query 关键词粗过滤文件名
@@ -374,6 +374,10 @@ class Config:
     validation_source: str = "wikipedia"
     validation_columns: Optional[List[str]] = None
     validation_api_keys: Optional[Dict[str, str]] = None
+
+    # Post-clean (6-step) optional export
+    enable_postclean6: bool = False
+    postclean_outdir: str | None = None
 
 # 👉 默认扫描"用户上传 datas/ + 本地 datalake/"
 DEFAULT_CONFIG = Config(
@@ -588,8 +592,8 @@ async def bootstrap_features_from_templates_llm_first(client: LLMClient, query: 
             # 创建TemplateManager（会自动缓存）
             tm = TemplateManager(client, cache_path=Path("templates/dynamic_templates.json"))
 
-            # 注意：这里需要discovered_datasets信息，但这个函数被调用时还没发现数据集
-            # 所以我们先用LLM模式生成一个基础template，后续在有数据集信息时再细化
+            # 注意：这里需要discovered_datasets信息,但这个函数被调用时还没发现数据集
+            # 所以我们先用LLM模式生成一个基础template,后续在有数据集信息时再细化
             # 这里先返回基于query的动态推断
 
             # 使用LLM动态推断（不依赖预定义模板）
@@ -794,11 +798,11 @@ def parse_keys(text: str) -> List[str]:
 
 
 # ===== 从 Query 提取用户“点名列” =====
-_REQ_SPLIT_RE = re.compile(r"[,\uFF0C，、/|;]|(?:\band\b)|(?:\bwith\b)", re.IGNORECASE)
+_REQ_SPLIT_RE = re.compile(r"[,\uFF0C,、/|;]|(?:\band\b)|(?:\bwith\b)", re.IGNORECASE)
 
 
 def _norm_feat_name(s: str) -> str:
-    """下划线小写化；只做匹配，不改动源数据列名。"""
+    """下划线小写化;只做匹配,不改动源数据列名。"""
     s = s.strip().strip(".")
     s = re.sub(r"[^A-Za-z0-9_]+", "_", s).strip("_")
     return s.lower()
@@ -809,7 +813,7 @@ def extract_requested_columns_from_query(q: str) -> list[str]:
     规则：
     - 英文：匹配 'with ...' 之后的部分（常见用法：with id, ph and quality）
     - 中文：匹配“包含/需要/字段为/列为”之后的部分
-    - 用逗号/and/顿号等分割，做轻度归一化后去重
+    - 用逗号/and/顿号等分割,做轻度归一化后去重
     """
     if not q:
         return []
@@ -849,7 +853,7 @@ def extract_domain_keyword(q: str) -> Optional[str]:
     例：'I need wine database with id...' -> 'wine'
         'I need NBA database with player id' -> 'nba'
         中文也支持：'需要电影数据库' -> '电影'
-    仅做匹配用，不参与任何写死别名。
+    仅做匹配用,不参与任何写死别名。
     """
     if not q:
         return None
@@ -859,7 +863,7 @@ def extract_domain_keyword(q: str) -> Optional[str]:
     m = re.search(r"\b([A-Za-z0-9_\-\s]{1,60}?)\s+database\b", s, flags=re.IGNORECASE)
     if m:
         token = m.group(1).strip()
-        # 取最后一个“词”（用户可能写 "red wine"），优先最具体的那个
+        # 取最后一个“词”（用户可能写 "red wine"）,优先最具体的那个
         last_word = re.split(r"[\s_\-]+", token.strip())[-1]
         last_word = re.sub(r"[^A-Za-z0-9_]+", "", last_word).lower()
         return last_word or None
@@ -868,23 +872,23 @@ def extract_domain_keyword(q: str) -> Optional[str]:
     m = re.search(r"([\u4e00-\u9fa5A-Za-z0-9_]{1,30})数据库", s)
     if m:
         token = m.group(1).strip()
-        # 中文不再切词，直接返回
+        # 中文不再切词,直接返回
         return token.lower()
 
     return None
 
 
-# ===== 在一张表中，用领域关键词“偏好匹配”点名列（通用评分）=====
+# ===== 在一张表中,用领域关键词“偏好匹配”点名列（通用评分）=====
 def resolve_requested_columns(headers: list[str], requested: list[str], domain: Optional[str]) -> Dict[
     str, Optional[str]]:
     """
-    输入：headers 原始列名列表；requested 点名列（规范化后的 id/ph/quality...）；domain 领域关键词（如 wine）
+    输入：headers 原始列名列表;requested 点名列（规范化后的 id/ph/quality...）;domain 领域关键词（如 wine）
     输出：字典 {requested_feat -> 实际匹配到的源列名或 None}
     规则（通用、无写死域）：
       - 完全同名优先（忽略大小写）
-      - 若存在 domain，则 (domain + 分隔符 + feat) 或 (feat + 分隔符 + domain) 优先于裸 feat
-      - 含 domain 的列加大权重；再看是否以 feat 开头；再看编辑距离短/列名短
-      - 不做任何别名表；不固化“wine/movie/NBA”等字符串
+      - 若存在 domain,则 (domain + 分隔符 + feat) 或 (feat + 分隔符 + domain) 优先于裸 feat
+      - 含 domain 的列加大权重;再看是否以 feat 开头;再看编辑距离短/列名短
+      - 不做任何别名表;不固化“wine/movie/NBA”等字符串
     """
     if not headers or not requested:
         return {r: None for r in requested}
@@ -980,7 +984,7 @@ def _series_int_band_ratio(df: pl.DataFrame, col: str, lo: int, hi: int) -> floa
 def _semantic_score_for_feature(df: pl.DataFrame, req_feat: str, header: str, topic_kw: Optional[str]) -> float:
     """
     自动语义打分（智能 domain-aware 版）
-    —— 无写死字段名，但能自动理解 “wine id” ≠ “random id”。
+    —— 无写死字段名,但能自动理解 “wine id” ≠ “random id”。
     """
     nh = _norm_token(header)
     nf = _norm_token(req_feat)
@@ -1008,7 +1012,7 @@ def _semantic_score_for_feature(df: pl.DataFrame, req_feat: str, header: str, to
         # 3) req_feat + domain 组合（id_wine / id_player）
         if re.search(rf"{nf}[_\-]*{nt}", nh):
             score += 10
-        # 4) domain 与 feat 都出现，强加分
+        # 4) domain 与 feat 都出现,强加分
         if nt in nh and nf in nh:
             score += 8
 
@@ -1027,7 +1031,7 @@ def _semantic_score_for_feature(df: pl.DataFrame, req_feat: str, header: str, to
         elif uniq_ratio > 0.3:
             score += 2
 
-        # 如果列名含 domain 且数值分布正常，加额外分
+        # 如果列名含 domain 且数值分布正常,加额外分
         if nt and nt in nh and num_ratio > 0.5:
             score += 5
     except Exception:
@@ -1043,18 +1047,18 @@ def _pick_best_header_for_req(df: pl.DataFrame, req: str, topic_kw: Optional[str
     scored = [(h, _semantic_score_for_feature(df, req, h, topic_kw)) for h in headers]
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    # 动态阈值（更稳）：基础阈值略升；id 且有 topic_kw 时更加谨慎
+    # 动态阈值（更稳）：基础阈值略升;id 且有 topic_kw 时更加谨慎
     base_min = 2.5
     req_is_id = _norm_token(req) == "id"
     if req_is_id and topic_kw:
         base_min = 4.0  # 避免随便拿一个“泛 id”
 
     best, best_score = scored[0]
-    # 若最佳分过低，放弃
+    # 若最佳分过低,放弃
     if best_score < base_min:
         return None
 
-    # 专门处理 id：若第一名不含 domain，第二名含 domain 且分差不大，则换第二名
+    # 专门处理 id：若第一名不含 domain,第二名含 domain 且分差不大,则换第二名
     if req_is_id and topic_kw:
         nt = _norm_token(topic_kw)
         best_has_domain = (nt in _norm_token(best))
@@ -1181,11 +1185,11 @@ async def map_one_dataset(client, path, feats, cfg, policy: DomainPolicy | None 
     requested = extract_requested_columns_from_query(cfg.question)
     topic_kw = extract_domain_keyword(cfg.question)
     if requested:
-        # 针对 id：如果用户确实点名了 id 且存在 domain_id，则优先替换为 domain id
+        # 针对 id：如果用户确实点名了 id 且存在 domain_id,则优先替换为 domain id
         if any(_norm_token(c) == "id" for c in requested) and topic_kw:
             dom_id = _prefer_domain_id_from_headers(hdr_list, requested, topic_kw)
             if dom_id:
-                # 只有当映射里的 id 不是这个 dom_id 时才替换；避免干扰已对的映射
+                # 只有当映射里的 id 不是这个 dom_id 时才替换;避免干扰已对的映射
                 if "id" not in mapping or mapping.get("id") != dom_id:
                     mapping["id"] = dom_id
 
@@ -1206,10 +1210,10 @@ def apply_mapping_and_rename(
 ) -> pl.DataFrame:
     """
     安全改名器：
-    - 仅对存在的源列改名；
-    - 同一目标名只保留第一条（后续冲突忽略）；
-    - passthrough_all=True 时，把未被使用且不与特征名冲突的原列也带上；
-    - keep_all_numeric=True 时，强制保留所有数值列
+    - 仅对存在的源列改名;
+    - 同一目标名只保留第一条（后续冲突忽略）;
+    - passthrough_all=True 时,把未被使用且不与特征名冲突的原列也带上;
+    - keep_all_numeric=True 时,强制保留所有数值列
     """
 
     def _clean(val: str) -> str:
@@ -1281,10 +1285,10 @@ def find_join_cols(cols_a, cols_b, join_keys, canon):
 
 def _coalesce_right_prefer(df: pl.DataFrame, *, suffix: str = "_r", skip_cols: list[str] | None = None) -> pl.DataFrame:
     """
-    对于 join 后出现的一对同名列 c 和 c+suffix，使用“右侧优先（后来的表正确）”策略：
+    对于 join 后出现的一对同名列 c 和 c+suffix,使用“右侧优先（后来的表正确）”策略：
       c := if (c+suffix 非空) then c+suffix else c
     然后丢弃 c+suffix。
-    skip_cols 为 join 键，永远不做覆盖。
+    skip_cols 为 join 键,永远不做覆盖。
     """
     if df.width == 0:
         return df
@@ -1295,14 +1299,14 @@ def _coalesce_right_prefer(df: pl.DataFrame, *, suffix: str = "_r", skip_cols: l
     for c in base_cols:
         r = f"{c}{suffix}"
         if r in df.columns:
-            # 右值按左列 dtype 尽量转换，非空即覆盖
+            # 右值按左列 dtype 尽量转换,非空即覆盖
             target_dt = df.schema.get(c, pl.Utf8)
             right_expr = pl.col(r).cast(target_dt, strict=False)
             left_expr = pl.col(c)
             updates.append(pl.when(right_expr.is_not_null()).then(right_expr).otherwise(left_expr).alias(c))
             drops.append(r)
         else:
-            # 不涉及该列，原样带上
+            # 不涉及该列,原样带上
             updates.append(pl.col(c))
     # 把未处理的列也带上（包括 join 键、纯右侧新增列）
     rest = [c for c in df.columns if c not in {u.meta.output_name() for u in updates} and c not in drops]
@@ -1382,7 +1386,7 @@ def _outer_join_many(frames: list[pl.DataFrame], join_cols: list[str], policy: D
             idx = next((i for i, f in enumerate(frames) if f is df), len(frames) - 1)
             return merged, frames[idx + 1:]
         merged = merged.join(df, on=jc, how="full", suffix="_r")
-        merged = _coalesce_right_prefer(merged, suffix="_r", skip_cols=jc)  # 右侧非空覆盖，然后删 *_r
+        merged = _coalesce_right_prefer(merged, suffix="_r", skip_cols=jc)  # 右侧非空覆盖,然后删 *_r
     return merged, []
 
 
@@ -1449,7 +1453,7 @@ async def process(cfg: Config):
     cache = LLMCache(cfg.cache_path)
     client = LLMClient(cache, cfg)
 
-    # 1) 仅扫描本地文件（datas/ & datalake/；若存在 data/ 也混合）
+    # 1) 仅扫描本地文件（datas/ & datalake/;若存在 data/ 也混合）
     paths = _expand_globs_mixed(cfg.datasets)
     if not paths:
         print("[ERR] No datasets found under patterns:", cfg.datasets)
@@ -1471,7 +1475,7 @@ async def process(cfg: Config):
             continue
     headers_union = list(dict.fromkeys(headers_union))
 
-    # 0) 领域与特征（用于列语义对齐，不拉外部数据）
+    # 0) 领域与特征（用于列语义对齐,不拉外部数据）
     templates = load_domain_templates()
     domain, feats, tpl_join, canon = await bootstrap_features_from_templates_llm_first(
         client, cfg.question, templates
@@ -1483,7 +1487,7 @@ async def process(cfg: Config):
         try:
             # 准备数据集信息供template生成使用
             discovered_datasets = []
-            for p in paths[:10]:  # 只用前10个数据集，避免prompt过长
+            for p in paths[:10]:  # 只用前10个数据集,避免prompt过长
                 try:
                     hdr, sample_row = preview_any(p)
                     cols = [h.strip() for h in hdr.split(",") if h.strip()]
@@ -1527,7 +1531,7 @@ async def process(cfg: Config):
     if REQUESTED_COLS:
         # 将点名列放到 features 最前面（提升语义映射的命中率）
         feats = list(dict.fromkeys(REQUESTED_COLS + feats))
-        # 点名列模式：为提高覆盖率，放宽抓取并关闭基于文件名的关键词过滤
+        # 点名列模式：为提高覆盖率,放宽抓取并关闭基于文件名的关键词过滤
         cfg.filter_by_query_keywords = False
         cfg.max_files = max(cfg.max_files, 50)
         cfg.max_rows_per_file = max(cfg.max_rows_per_file, 500_000)
@@ -1571,7 +1575,7 @@ async def process(cfg: Config):
     for path, (mapping, keys) in zip(paths, results):
         try:
             df_raw = _read_any_backend(path)
-            # —— 单表行数上限，避免超大表引起 vstack OOM —— #
+            # —— 单表行数上限,避免超大表引起 vstack OOM —— #
             if cfg.max_rows_per_file and df_raw.height > cfg.max_rows_per_file:
                 df_raw = df_raw.head(cfg.max_rows_per_file)
             raw_rows = df_raw.height
@@ -1579,7 +1583,7 @@ async def process(cfg: Config):
             print(f"[WARN] read fail {path.name}: {e}")
             continue
 
-        # ✅ 宽松映射，保留上下文（不因点名列而收窄）
+        # ✅ 宽松映射,保留上下文（不因点名列而收窄）
         df2 = apply_mapping_and_rename(
             df_raw,
             mapping,
@@ -1635,7 +1639,7 @@ async def process(cfg: Config):
                 filtered_for_subset.append((p, df))
         print(f"[RELEVANCE] keep {len(filtered_for_subset)}/{len(renamed)} files for requested-column union")
 
-    # === 点名列并集抽取：语义选列（列名+值分布+主题词），并把源列别名为请求列名 ===
+    # === 点名列并集抽取：语义选列（列名+值分布+主题词）,并把源列别名为请求列名 ===
     requested_subset_df = None
     requested_subset_path = None
     if REQUESTED_COLS:
@@ -1658,7 +1662,7 @@ async def process(cfg: Config):
 
         subset_frames: list[pl.DataFrame] = []
 
-        # 非 id 请求列，用于质量门控
+        # 非 id 请求列,用于质量门控
         non_id_req = [c for c in REQUESTED_COLS if "id" not in c.lower()]
 
         for p, df in filtered_for_subset:
@@ -1673,7 +1677,7 @@ async def process(cfg: Config):
                 if best is not None:
                     chosen_map[req] = best
 
-            # 质量门控：非 id 至少命中一个，且该列有效值比例 >= 2%
+            # 质量门控：非 id 至少命中一个,且该列有效值比例 >= 2%
             def _enough(col: str) -> bool:
                 try:
                     cnt = df.filter(
@@ -1693,7 +1697,7 @@ async def process(cfg: Config):
             if not chosen_map:
                 continue
 
-            # 构造子表：命中列 alias 为请求名，缺失列补 None
+            # 构造子表：命中列 alias 为请求名,缺失列补 None
             exprs = []
             for feat in REQUESTED_COLS:
                 src = chosen_map.get(feat)
@@ -1705,7 +1709,7 @@ async def process(cfg: Config):
             subset_frames.append(sub)
 
         if subset_frames:
-            # 统一 dtype，避免 vstack 冲突
+            # 统一 dtype,避免 vstack 冲突
             dtypes_map: dict[str, list[pl.datatypes.DataType]] = {c: [] for c in REQUESTED_COLS}
             for f in subset_frames:
                 for c in REQUESTED_COLS:
@@ -1723,7 +1727,7 @@ async def process(cfg: Config):
 
             print(f"[REQUESTED-UNION] rows={requested_subset_df.height}, cols={requested_subset_df.width}")
 
-    # 4A) 原“保守内连接”（审计对比，不变）
+    # 4A) 原“保守内连接”（审计对比,不变）
     base_path, merged_inner = choose_base_dataset(renamed, JOIN_KEYS)
     merged_safe = merged_inner
     print(f"[BASE/SAFE] {base_path.name}")
@@ -1753,7 +1757,7 @@ async def process(cfg: Config):
 
         print(f"[SAFE-JOIN] {p.name} ON {join_cols}")
         merged_safe = merged_safe.join(df, on=join_cols, how="inner", suffix="_r")
-        merged_safe = _coalesce_right_prefer(merged_safe, suffix="_r", skip_cols=join_cols)  # 右侧非空覆盖，然后删 *_r
+        merged_safe = _coalesce_right_prefer(merged_safe, suffix="_r", skip_cols=join_cols)  # 右侧非空覆盖,然后删 *_r
 
     # 4B) 通用合并（不变）
     try:
@@ -1982,10 +1986,10 @@ async def process(cfg: Config):
 
                 # 显示清洗模式信息
                 mode_info = {
-                    "hybrid": "混合清洗（规则+智能LLM，速度快3-10倍）",
-                    "fast": "快速规则清洗（纯规则，速度快10-20倍）",
-                    "batch": "批量LLM清洗（批量优化，速度快3-5倍）",
-                    "comprehensive": "综合清洗（传统模式，准确但较慢）",
+                    "hybrid": "混合清洗（规则+智能LLM,速度快3-10倍）",
+                    "fast": "快速规则清洗（纯规则,速度快10-20倍）",
+                    "batch": "批量LLM清洗（批量优化,速度快3-5倍）",
+                    "comprehensive": "综合清洗（传统模式,准确但较慢）",
                     "type": "类型清洗（基础清洗）"
                 }
                 print(f"[CLEAN] Mode: {cleaning_mode} - {mode_info.get(cleaning_mode, 'Unknown mode')}")
@@ -2016,7 +2020,7 @@ async def process(cfg: Config):
                 traceback.print_exc()
 
     # ====================================================================
-    # 阶段4: 数据验证（可选，通常在清洗后）
+    # 阶段4: 数据验证（可选,通常在清洗后）
     # ====================================================================
     validation_enabled = getattr(cfg, "enable_validation", False)
     if validation_enabled:
@@ -2069,7 +2073,7 @@ async def process(cfg: Config):
         print(f"[OK] Requested-subset CSV -> {req_out} ({requested_subset_df.height}x{requested_subset_df.width})")
         requested_subset_path = str(req_out)
 
-    # >>> 最终导出前，根据点名列裁剪（仅点名时生效；用“语义选列”再次映射 merged） <<<
+    # >>> 最终导出前,根据点名列裁剪（仅点名时生效;用“语义选列”再次映射 merged） <<<
     if REQUESTED_COLS:
         topic_keyword_final = await extract_topic_keyword(client, cfg.question)
         select_exprs = []
@@ -2091,7 +2095,60 @@ async def process(cfg: Config):
     # 5) 导出主结果
     out = Path(cfg.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    merged.write_csv(out, null_value="None")
+    # Optional 6-step post-clean with LLM-injected hints
+    final_df = merged
+    if getattr(cfg, "enable_postclean6", False):
+        try:
+            import re as _re, json as _json
+            # build llm_hints from dynamic_template and merged columns
+            cols = list(final_df.columns)
+            alias_rules = {}
+            try:
+                alias_rules = (dynamic_template.alias_rules or {}) if dynamic_template is not None else {}
+            except Exception:
+                alias_rules = {}
+            date_pats = [pat for pat, tgt in alias_rules.items() if _re.search(r"(date|year)", str(tgt), _re.I)]
+            json_pats = [pat for pat, tgt in alias_rules.items() if _re.search(r"(genre|keyword|production|spoken|tag|cast|crew)", str(tgt), _re.I)]
+            num_pats  = [pat for pat, tgt in alias_rules.items() if _re.search(r"(budget|revenue|runtime|popularity|vote|score|count|price|gross)", str(tgt), _re.I)]
+            def _match_any(patterns, name):
+                for p in patterns:
+                    try:
+                        if _re.search(p, name, _re.I):
+                            return True
+                    except Exception:
+                        continue
+                return False
+            date_cols = [c for c in cols if _re.search(r"(date|year)", c, _re.I) or _match_any(date_pats, c)]
+            json_list_cols = [c for c in cols if _re.search(r"(genres?|keywords?|production_|spoken_languages|tags?)", c, _re.I) or _match_any(json_pats, c)]
+            numeric_cols = [c for c in cols if _match_any(num_pats, c)]
+            synonyms = {
+                "budget": ["budget","cost"],
+                "revenue": ["revenue","box_office","gross"]
+            }
+            for pat, tgt in alias_rules.items():
+                tl = str(tgt).lower()
+                if any(k in tl for k in ["budget","cost"]):
+                    synonyms.setdefault("budget", []).append(pat)
+                if any(k in tl for k in ["revenue","box_office","gross"]):
+                    synonyms.setdefault("revenue", []).append(pat)
+            llm_hints = {
+                "date_cols": list(dict.fromkeys(date_cols)),
+                "numeric_cols": list(dict.fromkeys(numeric_cols)),
+                "json_list_cols": list(dict.fromkeys(json_list_cols)),
+                "synonyms": synonyms
+            }
+            pc = PostCleaner(llm_hints=llm_hints)
+            final_df, dims = pc.run(final_df)
+            _pc_dir = Path(cfg.postclean_outdir) if getattr(cfg, "postclean_outdir", None) else Path(cfg.out).with_name(Path(cfg.out).stem + "_postclean")
+            _pc_dir.mkdir(parents=True, exist_ok=True)
+            final_df.write_csv(_pc_dir / "movies_cleaned.csv", null_value="")
+            for name, tbl in dims.items():
+                ( _pc_dir / f"{name}.csv").write_text("") if tbl.height==0 else None
+                tbl.write_csv(_pc_dir / f"{name}.csv", null_value="")
+            print(f"[POSTCLEAN] Exported production tables to: {_pc_dir}")
+        except Exception as e:
+            print(f"[POSTCLEAN] skipped due to error: {e}")
+    final_df.write_csv(out, null_value="None")
 
     # 附带保守内连接维度（对比记录）
     safe_info = {
@@ -2177,7 +2234,7 @@ async def is_dataset_relevant_to_query(
         obj = _extract_json_block(out)
         return bool(obj.get("relevant", False))
     except Exception:
-        # 任何异常一律判为不相关，防止脏数据混入
+        # 任何异常一律判为不相关,防止脏数据混入
         return False
 
 

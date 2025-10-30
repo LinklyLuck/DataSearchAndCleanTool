@@ -1,20 +1,9 @@
 # cleaning_providers/hybrid_cleaner.py
 """
-HybridCleaningProvider - 混合清洗器（速度优化版）
-
 策略：
 1. 第一阶段：快速规则清洗（向量化，覆盖80%问题）
 2. 第二阶段：智能过滤（跳过干净列）
 3. 第三阶段：批量LLM清洗（只处理复杂列）
-
-性能：比原版快3-10倍
-
-使用示例：
-    from cleaning_providers import get_cleaning_provider
-
-    # 默认使用混合清洗器
-    cleaner = get_cleaning_provider("comprehensive", llm_client=client)
-    cleaned_df, report = await cleaner.clean(df, primary_keys=["id"])
 """
 from __future__ import annotations
 import asyncio
@@ -28,13 +17,11 @@ from .batch_llm_cleaner import BatchLLMCleaningProvider
 class HybridCleaningProvider(CleaningProvider):
     """
     混合清洗器 - 规则引擎 + 智能LLM
-
     阶段：
     1. 快速规则清洗（80%问题）
     2. 智能列过滤（减少LLM调用）
     3. 批量LLM清洗（复杂问题）
 
-    性能：3-10倍速度提升
     """
 
     name = "Hybrid-Cleaning"

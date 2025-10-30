@@ -1,7 +1,6 @@
 # cleaning_providers/type_cleaner.py
 """
 Type Consistency Cleaner
-
 确保数据类型一致性：
 - 数值列只包含数值
 - 日期列格式统一
